@@ -138,14 +138,20 @@ class A11yService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    /** 지금 떠 있는 키보드 창의 윗선(화면 좌표). 키보드가 없으면 null */
+    /** 지금 떠 있는 키보드의 실제 윗선(화면 좌표). 못 찾거나 이상한 값이면 null */
     fun imeTop(): Int? = runCatching {
-        windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-            ?.let { w ->
-                val r = android.graphics.Rect()
-                w.getBoundsInScreen(r)
-                if (r.height() > 0) r.top else null
-            }
+        val h = resources.displayMetrics.heightPixels
+        val w = windows.firstOrNull {
+            it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD
+        } ?: return@runCatching null
+        val r = android.graphics.Rect()
+        w.getBoundsInScreen(r)
+        // 키보드 창이 화면 전체 크기인 경우가 있어서, 실제 키보드 뷰 위치도 확인
+        val rr = android.graphics.Rect()
+        w.root?.getBoundsInScreen(rr)
+        val top = maxOf(r.top, rr.top)
+        // 말이 되는 범위(화면 30%~92%)만 믿음
+        if (r.height() > 0 && top in (h * 0.30f).toInt()..(h * 0.92f).toInt()) top else null
     }.getOrNull()
 
     /** 터치를 밑에 있는 앱에 다시 넣기 (탭 또는 짧은 스와이프) */

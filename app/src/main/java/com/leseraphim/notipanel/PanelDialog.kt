@@ -156,7 +156,7 @@ class PanelDialog(
             if (!keyboardWatch || closing) return
             val a11y = ctx as? A11yService ?: A11yService.instance
             val imeTop = a11y?.imeTop()
-                ?: (screenH * 0.58f).toInt()                 // 접근성 없으면 키보드 높이 추정
+                ?: (screenH * 0.58f).toInt()                 // 못 읽으면 키보드 높이 추정
             if (imeTop != lastImeTop) {
                 lastImeTop = imeTop
                 val h = window?.attributes?.height ?: 0
@@ -285,9 +285,10 @@ class PanelDialog(
     }
 
     // ───────── 닫기 ─────────
-    fun closeAnimated() {
+    fun closeAnimated(reason: String = "기타") {
         if (closing) return
         closing = true
+        OverlayService.lastCloseReason = reason
         hideKeyboard()
         val d = window?.decorView ?: return dismissNow()
         d.animate().cancel()
@@ -313,6 +314,7 @@ class PanelDialog(
     }
 
     override fun onStop() {
+        if (!closing) OverlayService.lastCloseReason = "시스템이 창을 닫음"
         NotificationStore.removeListener(storeListener)
         super.onStop()
     }
@@ -324,15 +326,25 @@ class PanelDialog(
             val x = event.x.toInt()
             val y = event.y.toInt()
             if (x < 0 || y < 0 || x > d.width || y > d.height) {
-                closeAnimated()
+                if (keyboardWatch) { currentFocus?.clearFocus(); return true }   // 답장 중이면 입력만 닫기
+                closeAnimated("패널 바깥 터치")
                 return true
             }
         }
         return super.onTouchEvent(event)
     }
 
+    /** 뒤로가기: 답장 입력 중이면 입력만 닫고 패널은 유지 */
     @Deprecated("Deprecated in Java")
-    override fun onBackPressed() = closeAnimated()
+    override fun onBackPressed() {
+        if (keyboardWatch || currentFocus is android.widget.EditText) {
+            currentFocus?.clearFocus()
+            return
+        }
+        closeAnimated("뒤로가기")
+    }
+
+    val replying get() = keyboardWatch
 
     // ───────── 목록 ─────────
     private fun setupList() {
@@ -488,7 +500,7 @@ class PanelDialog(
         if (clearable.isEmpty() && remain > 0) {
             Toast.makeText(ctx, "남은 알림은 앱이 고정한 알림이라 지울 수 없어요", Toast.LENGTH_SHORT).show()
         }
-        main.postDelayed({ closeAnimated() }, delay + 180)
+        main.postDelayed({ closeAnimated("X 버튼") }, delay + 180)
     }
 
     /**
@@ -748,7 +760,7 @@ class PanelDialog(
         if (sbn.notification.flags and Notification.FLAG_AUTO_CANCEL != 0) {
             NotificationStore.dismiss(sbn)
         }
-        closeAnimated()
+        closeAnimated("알림 열기")
     }
 
     companion object {

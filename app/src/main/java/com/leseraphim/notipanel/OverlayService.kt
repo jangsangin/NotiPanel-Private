@@ -37,6 +37,9 @@ class OverlayService : Service() {
         private const val CHANNEL = "status_nobadge"
         private const val NOTI_ID = 1
 
+        /** 패널이 마지막으로 닫힌 이유 (상태 알림에 표시) */
+        var lastCloseReason = "-"
+
         /** 설정의 '테스트로 보이기' 버튼용 */
         var instance: OverlayService? = null
             private set
@@ -151,7 +154,7 @@ class OverlayService : Service() {
             .setContentTitle("노티패널 · 사이드바 $bar")
             .setContentText("감지: $method")
             .setStyle(Notification.BigTextStyle().bigText(
-                "감지: $method\n지금 화면: $where (${A11yService.currentPkg()})\n사이드바: $bar"
+                "감지: $method\n지금 화면: $where (${A11yService.currentPkg()})\n사이드바: $bar\n패널 마지막 닫힘: $lastCloseReason"
             ))
             .setContentIntent(open)
             .setOngoing(true)
@@ -255,7 +258,9 @@ class OverlayService : Service() {
     private fun updateVisibility(animate: Boolean = true) {
         val noDetect = A11yService.instance == null && rootWatcher?.rootOk == false
         val want = forceShow || noDetect || !A11yService.onHome
-        if (!want) panel?.closeAnimated()
+        // 답장 입력 중에는 화면 감지가 흔들려도 패널 유지
+        if (!want && panel?.replying != true) panel?.closeAnimated("홈 화면 감지")
+        if (!want && panel?.replying == true) return
         setShown(want, animate)
     }
 
@@ -412,7 +417,7 @@ class OverlayService : Service() {
         val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
         val host: Context = A11yService.instance ?: this
         panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this)).also {
-            it.setOnDismissListener { panel = null }
+            it.setOnDismissListener { panel = null; refreshStatus() }
             it.showAnimated()
         }
     }
