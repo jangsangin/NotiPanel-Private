@@ -133,11 +133,64 @@ class PanelDialog(
         baseY = y
     }
 
+    // ───────── 키보드 따라 패널 올리기 ─────────
+    private var keyboardWatch = false
+    private var lastImeTop: Int? = null
+    private var posAnim: ValueAnimator? = null
+
+    /** 입력칸이 열리면 호출: 키보드 위치를 계속 확인해서 패널을 그 위로 */
+    fun watchKeyboard(on: Boolean) {
+        keyboardWatch = on
+        if (on) {
+            main.removeCallbacks(keyboardTick)
+            main.post(keyboardTick)
+        } else {
+            main.removeCallbacks(keyboardTick)
+            lastImeTop = null
+            slideWindowTo(baseY)
+        }
+    }
+
+    private val keyboardTick = object : Runnable {
+        override fun run() {
+            if (!keyboardWatch || closing) return
+            val a11y = ctx as? A11yService ?: A11yService.instance
+            val imeTop = a11y?.imeTop()
+                ?: (screenH * 0.58f).toInt()                 // 접근성 없으면 키보드 높이 추정
+            if (imeTop != lastImeTop) {
+                lastImeTop = imeTop
+                val h = window?.attributes?.height ?: 0
+                val want = (imeTop - dp(8) - h).coerceAtLeast(dp(30))
+                slideWindowTo(minOf(baseY, want))
+            }
+            main.postDelayed(this, 120)
+        }
+    }
+
+    /** 창 위치만(크기는 그대로) 짧게 미끄러뜨림 → 크기 변경이 아니라 가벼움 */
+    private fun slideWindowTo(y: Int) {
+        val w = window ?: return
+        val from = w.attributes.y
+        if (from == y) return
+        posAnim?.cancel()
+        posAnim = ValueAnimator.ofInt(from, y).apply {
+            duration = 220
+            interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+            addUpdateListener {
+                val lp = w.attributes
+                lp.y = it.animatedValue as Int
+                w.attributes = lp
+            }
+            start()
+        }
+    }
+
     private var imeShift = 0
     private var lastIme = 0
     private fun moveAboveKeyboard(ime: Int) {
         if (lastIme > 0 && ime == 0) currentFocus?.clearFocus()
         lastIme = ime
+        if (keyboardWatch) return   // 직접 추적 중이면 그쪽이 담당
         val w = window ?: return
         val h = w.attributes.height
         val wantBottom = if (ime > 0) screenH - ime - dp(8) else bottom
@@ -289,7 +342,8 @@ class PanelDialog(
             ctx,
             onOpen = { openNotification(it) },
             onAction = { a -> sendPending(a.actionIntent) },   // 읽음 등: 패널 유지
-            onReply = { a, text -> sendReply(a, text) }
+            onReply = { a, text -> sendReply(a, text) },
+            onReplyOpen = { open -> watchKeyboard(open) }
         )
         list.layoutManager = LinearLayoutManager(ctx)
         list.adapter = adapter

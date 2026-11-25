@@ -89,7 +89,9 @@ class OverlayService : Service() {
         rebuildBar()
         handler.postDelayed(sampler, 800)
         RootShell.warmUp()
-        if (A11yService.instance == null) PermissionFixer.restore(this)
+        if (A11yService.instance == null) {
+            if (!PermissionFixer.restoreNoRoot(this)) PermissionFixer.restore(this)
+        }
         if (A11yService.instance == null) {
             Toast.makeText(this, "접근성을 켜야 사이드바가 키보드 위에 보여요", Toast.LENGTH_LONG).show()
         }

@@ -138,6 +138,21 @@ class SettingsActivity : AppCompatActivity() {
             ?.contains(cn) == true
         btnListener.text = if (listenerOk) "알림 접근: 허용됨 ✓" else "알림 접근 허용하기"
 
+        // 루트 되는 폰에서만 루트 버튼 보이기 + 권한 자동 유지 상태 안내
+        val btnFix = findViewById<MaterialButton>(R.id.btnFix)
+        val keepInfo = findViewById<TextView>(R.id.keepInfo)
+        val secureOk = PermissionFixer.hasSecureSettings(this)
+        PermissionFixer.checkRoot { rooted ->
+            runOnUiThread {
+                btnFix.visibility = if (rooted) android.view.View.VISIBLE else android.view.View.GONE
+                keepInfo.text = when {
+                    secureOk -> "재부팅 후 권한 자동 유지: 켜짐 ✓"
+                    rooted -> "루트로 재부팅 때마다 권한을 자동 복구해요"
+                    else -> "재부팅 후 접근성이 풀리면, PC에 폰을 연결하고 아래 명령을 한 번만 실행하세요. 그다음부턴 앱이 스스로 다시 켜요.\n\nadb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
+                }
+            }
+        }
+
         val a11yCn = ComponentName(this, A11yService::class.java).flattenToString()
         val a11yOk = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.contains(a11yCn) == true

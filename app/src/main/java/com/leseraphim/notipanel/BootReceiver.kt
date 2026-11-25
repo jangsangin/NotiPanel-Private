@@ -12,8 +12,10 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
             intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         if (!Prefs.enabled(context)) return
+        // 1) 루트 없이: 보안 설정 쓰기 권한이 있으면 앱이 직접 접근성 다시 켜기
+        PermissionFixer.restoreNoRoot(context)
         val pending = goAsync()
-        // ColorOS가 부팅 때 풀어버린 권한을 루트로 먼저 복구한 뒤 서비스 시작
+        // 2) 루트가 있으면 나머지 권한까지 복구한 뒤 서비스 시작 (루트 없으면 그냥 넘어감)
         PermissionFixer.restore(context) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 if (Settings.canDrawOverlays(context)) runCatching { OverlayService.start(context) }

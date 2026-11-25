@@ -138,6 +138,16 @@ class A11yService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    /** 지금 떠 있는 키보드 창의 윗선(화면 좌표). 키보드가 없으면 null */
+    fun imeTop(): Int? = runCatching {
+        windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            ?.let { w ->
+                val r = android.graphics.Rect()
+                w.getBoundsInScreen(r)
+                if (r.height() > 0) r.top else null
+            }
+    }.getOrNull()
+
     /** 터치를 밑에 있는 앱에 다시 넣기 (탭 또는 짧은 스와이프) */
     fun replay(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long, done: () -> Unit): Boolean {
         val path = android.graphics.Path().apply { moveTo(x1, y1); lineTo(x2, y2) }

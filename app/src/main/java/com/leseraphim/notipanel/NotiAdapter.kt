@@ -41,7 +41,8 @@ class NotiAdapter(
     private val ctx: Context,
     private val onOpen: (StatusBarNotification) -> Unit,
     private val onAction: (Notification.Action) -> Unit,
-    private val onReply: (Notification.Action, CharSequence) -> Unit
+    private val onReply: (Notification.Action, CharSequence) -> Unit,
+    private val onReplyOpen: (Boolean) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -291,6 +292,7 @@ class NotiAdapter(
                 .setInterpolator(interp).start()
             replyInput.requestFocus()
             replyInput.postDelayed({ imm.showSoftInput(replyInput, 0) }, 120)
+            onReplyOpen(true)
 
             val send = {
                 val t = replyInput.text
@@ -312,6 +314,7 @@ class NotiAdapter(
         fun closeReply() {
             if (replyRow.visibility != View.VISIBLE) return
             imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
+            onReplyOpen(false)
             replyRow.animate().alpha(0f).scaleX(0.95f).setStartDelay(0).setDuration(150)
                 .withEndAction { replyRow.visibility = View.GONE; replyRow.scaleX = 1f }.start()
             actionsV.visibility = View.VISIBLE
