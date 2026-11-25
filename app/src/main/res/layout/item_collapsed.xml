@@ -81,4 +81,24 @@
 
   <!-- 답장 가능한 알림이면 버튼 줄 (답장 · 읽음 등) -->
   <include layout="@layout/reply_area" />
+
+    <!-- 묶인 알림 펼친 목록 -->
+    <LinearLayout
+        android:id="@+id/subItems"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone" />
+
+    <!-- 오른쪽 아래 펼치기 화살표 -->
+    <ImageView
+        android:id="@+id/expandBtn"
+        android:layout_width="32dp"
+        android:layout_height="24dp"
+        android:layout_gravity="end"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="-6dp"
+        android:padding="2dp"
+        android:src="@drawable/ic_chevron"
+        android:visibility="gone" />
 </LinearLayout>

@@ -393,7 +393,9 @@ class PanelDialog(
             onOpen = { openNotification(it) },
             onAction = { a -> sendPending(a.actionIntent) },   // 읽음 등: 패널 유지
             onReply = { a, text -> sendReply(a, text) },
-            onReplyOpen = { open -> watchKeyboard(open) }
+            onReplyOpen = { open -> watchKeyboard(open) },
+            // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
+            onToggle = { pos -> animateChange { adapter.notifyItemChanged(pos) } }
         )
         list.layoutManager = object : LinearLayoutManager(ctx) {
             override fun canScrollVertically() = !horizontalLock && super.canScrollVertically()

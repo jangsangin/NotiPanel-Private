@@ -42,7 +42,8 @@ class NotiAdapter(
     private val onOpen: (StatusBarNotification) -> Unit,
     private val onAction: (Notification.Action) -> Unit,
     private val onReply: (Notification.Action, CharSequence) -> Unit,
-    private val onReplyOpen: (Boolean) -> Unit = {}
+    private val onReplyOpen: (Boolean) -> Unit = {},
+    private val onToggle: (Int) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -59,6 +60,9 @@ class NotiAdapter(
         private set
 
     private val appNames = HashMap<String, String>()
+
+    /** 화살표로 펼친 묶음 (앱 패키지) */
+    val expanded = HashSet<String>()
     private val appIcons = HashMap<String, Drawable?>()
     private val density = ctx.resources.displayMetrics.density
 
@@ -234,8 +238,13 @@ class NotiAdapter(
                 val t = text(n)
                 if (t.isNotEmpty()) messagesV.addView(line(t, 14f, 0.95f, maxLines = 4))
             }
-            // 같은 앱의 다른 알림 2개까지 한 줄씩
-            g.items.drop(1).take(2).forEach {
+            // 같은 앱의 다른 알림: 펼쳤으면 아래 목록으로, 아니면 2개까지 한 줄씩
+            val subs: LinearLayout = itemView.findViewById(R.id.subItems)
+            val isExp = g.pkg in expanded && g.items.size >= 2
+            if (isExp) { subs.visibility = View.VISIBLE; fillSubs(subs, g.items.drop(1)) }
+            else { subs.visibility = View.GONE; subs.removeAllViews() }
+            setupExpand(this, g)
+            if (!isExp) g.items.drop(1).take(2).forEach {
                 val s = SpannableStringBuilder(bold(title(it.notification))).append("  ").append(text(it.notification))
                 messagesV.addView(line(s, 13f, 0.7f, maxLines = 1, top = dp(4)))
             }
@@ -260,6 +269,57 @@ class NotiAdapter(
                 setLineSpacing(0f, 1.15f)
                 layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = top }
             }
+    }
+
+    // ───────── 묶음 펼치기 (화살표) ─────────
+    /** 화살표 상태 맞추고 누르면 펼침/접힘 */
+    private fun setupExpand(holder: RecyclerView.ViewHolder, g: NotiGroup) {
+        val btn: ImageView = holder.itemView.findViewById(R.id.expandBtn)
+        val many = g.items.size >= 2
+        btn.visibility = if (many) View.VISIBLE else View.GONE
+        val isExp = g.pkg in expanded
+        btn.animate().cancel()
+        btn.rotation = if (isExp) 180f else 0f
+        btn.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+            if (!expanded.remove(g.pkg)) expanded += g.pkg
+            btn.animate().rotation(if (g.pkg in expanded) 180f else 0f).setDuration(200).start()
+            onToggle(pos)
+        }
+    }
+
+    /** 펼쳤을 때 묶음 안의 알림을 하나씩 보여줌 (채팅이면 답장 가능) */
+    private fun fillSubs(container: LinearLayout, items: List<StatusBarNotification>) {
+        container.removeAllViews()
+        val inf = LayoutInflater.from(ctx)
+        items.forEach { sbn ->
+            val n = sbn.notification
+            val v = inf.inflate(R.layout.item_sub, container, false)
+            v.findViewById<TextView>(R.id.subTitle).text = title(n).ifEmpty { appName(sbn.packageName) }
+            v.findViewById<TextView>(R.id.subTime).text = time(sbn)
+            val msgs = messages(n).takeLast(2)
+            val body: CharSequence = if (msgs.isNotEmpty()) {
+                val sb = SpannableStringBuilder()
+                msgs.forEachIndexed { i, (sender, t) ->
+                    if (i > 0) sb.append("\n")
+                    if (sender != null && sender.toString() != title(n).toString()) sb.append(bold(sender)).append("  ")
+                    sb.append(t)
+                }
+                sb
+            } else text(n)
+            v.findViewById<TextView>(R.id.subText).apply {
+                text = body
+                visibility = if (body.isEmpty()) View.GONE else View.VISIBLE
+            }
+            val box = ReplyBox(v)
+            val canReply = n.actions?.any { !it.remoteInputs.isNullOrEmpty() } == true
+            if (canReply) box.bind(n, maxButtons = 2) else box.hide()
+            v.setOnClickListener { onOpen(sbn) }
+            container.addView(v)
+        }
+        container.alpha = 0f
+        container.animate().alpha(1f).setDuration(220).start()
     }
 
     // ───────── 버튼 줄 ↔ 답장 입력칸 (펼친 카드·접힌 카드 공용) ─────────
@@ -419,7 +479,21 @@ class NotiAdapter(
             line2.visibility = if (line2.text.isNullOrEmpty()) View.GONE else View.VISIBLE
             // 답장 가능한 채팅 알림이면 접힌 카드에도 '답장' 버튼
             val canReply = n.actions?.any { !it.remoteInputs.isNullOrEmpty() } == true
-            if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
+            val subs: LinearLayout = itemView.findViewById(R.id.subItems)
+            val isExp = g.pkg in expanded && g.items.size >= 2
+            if (isExp) {
+                // 펼침: 앱 이름 + 개수만 위에, 알림은 아래에 하나씩 (채팅은 각각 답장 가능)
+                line1.text = "${appName(sbn.packageName)} · 알림 ${g.items.size}개"
+                line1.setTypeface(null, Typeface.BOLD)
+                line2.visibility = View.GONE
+                replyBox.hide()
+                subs.visibility = View.VISIBLE
+                fillSubs(subs, g.items)
+            } else {
+                subs.visibility = View.GONE; subs.removeAllViews()
+                if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
+            }
+            setupExpand(this, g)
             itemView.setOnClickListener { onOpen(sbn) }
         }
 
