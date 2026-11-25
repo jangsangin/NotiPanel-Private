@@ -385,8 +385,9 @@ class OverlayService : Service() {
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
         val anchorY = loc[1] + from.height / 2
+        val barBottom = loc[1] + from.height          // 사이드바 아래 끝
         val host: Context = A11yService.instance ?: this
-        panel = PanelDialog(host, anchorY, Prefs.blur(this)).also {
+        panel = PanelDialog(host, anchorY, barBottom, Prefs.blur(this)).also {
             it.setOnDismissListener { panel = null }
             it.showAnimated()
         }

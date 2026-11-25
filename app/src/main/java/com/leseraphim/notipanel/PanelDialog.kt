@@ -36,6 +36,7 @@ import androidx.recyclerview.widget.RecyclerView
 class PanelDialog(
     private val ctx: Context,
     private val anchorY: Int,      // 사이드바 중앙 높이 (펼쳐지는 기준점)
+    private val barBottom: Int,    // 사이드바 아래 끝 → 패널 아래 끝을 여기에 맞춤
     private val blurRadius: Int
 ) : Dialog(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar) {
 
@@ -69,7 +70,7 @@ class PanelDialog(
         val b = wm.currentWindowMetrics.bounds
         screenW = b.width(); screenH = b.height()
         left = dp(14); right = screenW - dp(14)
-        bottom = (screenH * 0.72f).toInt()
+        bottom = barBottom
         top = bottom - maxHeight()
         blurOk = Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
 
