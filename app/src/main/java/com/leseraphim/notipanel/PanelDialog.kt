@@ -441,21 +441,18 @@ class PanelDialog(
                 c.scaleY = c.scaleX
                 c.alpha = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
                 c.translationZ = -depth
-                setBlur(c, (dd * 8).toInt().coerceIn(10, 28))
+                // (블러는 아래에서 X 기준 그라데이션으로)
             } else if (c.top < 0) {
                 val p = (-c.top / h).coerceIn(0f, 1f)
                 c.translationY = 0f
                 c.scaleX = 1f - 0.06f * p; c.scaleY = c.scaleX
                 c.alpha = 1f - p
                 c.translationZ = 0f
-                setBlur(c, 0)
             } else {
                 c.translationY = 0f
                 c.scaleX = 1f; c.scaleY = 1f
                 c.alpha = 1f
                 c.translationZ = 0f
-                // X 버튼 뒤로 지나가는 카드(첫 카드 제외)는 블러
-                setBlur(c, if (pos >= 1 && c.bottom > xTop) 28 else 0)
             }
             val (off, a) = enterOffset(i)
             c.translationY += off
@@ -474,6 +471,22 @@ class PanelDialog(
                 c.translationY += dlt * k
                 if (id in newIds) c.alpha *= 1f - k
             }
+
+            // X 버튼과 겹치는 부분부터 아래로 점점 진해지는 블러
+            // (첫 카드 제외, 카드의 둥근 모양 안에서만, 겹치지 않는 윗부분은 선명)
+            if (pos >= 1) {
+                val s = c.scaleY.coerceAtLeast(0.5f)
+                val ty = c.translationY
+                val hh = c.height.toFloat()
+                // 목록 좌표의 높이 Y → 카드 안쪽 좌표 (아래 기준으로 축소된 것 반영)
+                fun local(yInList: Float) = hh - (c.top + ty + hh - yInList) / s
+                val xTopHere = xTop - list.translationY      // 목록이 튕기며 움직여도 X 기준 유지
+                val fade = 30 * density
+                val visBottom = c.top + ty + hh
+                if (visBottom > xTopHere - fade) {
+                    ProgressiveBlur.apply(c, local(xTopHere - fade), local(xTopHere + 6 * density), 22 * density)
+                } else ProgressiveBlur.clear(c)
+            } else ProgressiveBlur.clear(c)
         }
         if (pendingOld != null) {
             pendingOld = null
