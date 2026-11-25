@@ -48,6 +48,18 @@ class SettingsActivity : AppCompatActivity() {
         btnListener = findViewById(R.id.btnListener)
         swEnable = findViewById(R.id.swEnable)
         btnA11y = findViewById(R.id.btnA11y)
+        findViewById<MaterialButton>(R.id.btnFix).setOnClickListener {
+            Toast.makeText(this, "루트로 권한 복구 중…", Toast.LENGTH_SHORT).show()
+            PermissionFixer.restore(this) { ok ->
+                runOnUiThread {
+                    Toast.makeText(
+                        this, if (ok) "권한을 다시 켰어요" else "실패: KernelSU에서 루트 허용을 확인해 주세요",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    recreate()
+                }
+            }
+        }
         btnA11y.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
