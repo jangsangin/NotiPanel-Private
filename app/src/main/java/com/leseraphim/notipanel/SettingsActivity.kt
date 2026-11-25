@@ -126,6 +126,12 @@ class SettingsActivity : AppCompatActivity() {
                 Prefs.get(this@SettingsActivity).edit().putBoolean(Prefs.KEY_STACK, c).apply()
             }
         }
+        findViewById<MaterialSwitch>(R.id.swHideOngoing).apply {
+            isChecked = Prefs.hideOngoing(this@SettingsActivity)
+            setOnCheckedChangeListener { _, c ->
+                Prefs.get(this@SettingsActivity).edit().putBoolean(Prefs.KEY_HIDE_ONGOING, c).apply()
+            }
+        }
         bindSlider(R.id.slCard, R.id.lblCard, Prefs.KEY_CARD, Prefs.cardDark(this)) {
             "노티바 진하기: $it%  (0 = 밝은 유리, 100 = 짙은 회색)"
         }

@@ -56,6 +56,11 @@ class PanelDialog(
     private lateinit var focusSink: View
     private val useShot: Boolean
     private val stackOn = Prefs.stackOn(ctx)
+    private val hideOngoing = Prefs.hideOngoing(ctx)
+    /** 패널에 보여줄 알림 (설정에 따라 고정 알림 제외) */
+    private fun shownItems() = NotificationStore.items.let { all ->
+        if (hideOngoing) all.filter { it.isClearable && it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0 } else all
+    }
     private var shotView: android.widget.ImageView? = null
 
     private var closing = false
@@ -748,7 +753,7 @@ class PanelDialog(
 
     /** X: 지울 수 있는 알림을 카드가 옆으로 빠지는 애니메이션과 함께 지우고 패널 닫기 */
     private fun clearAllAndClose() {
-        val clearable = NotificationStore.items.filter { it.isClearable }
+        val clearable = shownItems().filter { it.isClearable }
         NotificationStore.removeListener(storeListener)   // 지우는 동안 목록 깜빡임 방지
         var delay = 0L
         for (i in list.childCount - 1 downTo 0) {
@@ -761,7 +766,7 @@ class PanelDialog(
             delay += 40
         }
         NotificationStore.dismissMany(clearable)
-        val remain = NotificationStore.items.size - clearable.size
+        val remain = shownItems().size - clearable.size
         if (clearable.isEmpty() && remain > 0) {
             Toast.makeText(ctx, "남은 알림은 앱이 고정한 알림이라 지울 수 없어요", Toast.LENGTH_SHORT).show()
         }
@@ -1087,7 +1092,7 @@ class PanelDialog(
             emptyView.visibility = View.VISIBLE
             return
         }
-        val items = NotificationStore.items
+        val items = shownItems()
         val sig = items.joinToString("|") {
             val ex = it.notification.extras
             "${it.key}:${ex.getCharSequence(Notification.EXTRA_TITLE)}:${ex.getCharSequence(Notification.EXTRA_TEXT)}"

@@ -29,6 +29,8 @@ object Prefs {
     fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 100)
     fun sizeDp(c: Context) = get(c).getInt(KEY_SIZE, 64)
     fun stackOn(c: Context) = get(c).getBoolean(KEY_STACK, true)
+    const val KEY_HIDE_ONGOING = "hide_ongoing"   // 고정 알림(지울 수 없는 알림) 숨기기
+    fun hideOngoing(c: Context) = get(c).getBoolean(KEY_HIDE_ONGOING, false)
     fun panelClear(c: Context) = get(c).getInt(KEY_CLEAR, 45)
     fun cardDark(c: Context) = get(c).getInt(KEY_CARD, 0)
     fun blur(c: Context) = get(c).getInt(KEY_BLUR, 80)

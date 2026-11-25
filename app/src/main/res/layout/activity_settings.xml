@@ -186,6 +186,14 @@
             android:text="아래 알림 겹치기 효과"
             android:textSize="16sp" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swHideOngoing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="고정 알림 숨기기 (음악·충전·실행 중 같은 지울 수 없는 알림)"
+            android:textSize="16sp" />
+
         <TextView
             android:id="@+id/lblCard"
             android:layout_width="wrap_content"
