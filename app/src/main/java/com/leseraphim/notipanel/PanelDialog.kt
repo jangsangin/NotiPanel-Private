@@ -50,6 +50,7 @@ class PanelDialog(
     private lateinit var list: RecyclerView
     private lateinit var adapter: NotiAdapter
     private lateinit var emptyView: TextView
+    private lateinit var focusSink: View
 
     private var closing = false
     private var blurAnim: ValueAnimator? = null
@@ -78,6 +79,9 @@ class PanelDialog(
         val root = FrameLayout(ctx)
         content = LayoutInflater.from(ctx).inflate(R.layout.panel, root, false)
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
+        // 입력칸에서 포커스를 뺄 때 받아줄 빈 칸 (목록에 주면 다시 입력칸으로 넘어가 버림)
+        focusSink = View(ctx).apply { isFocusable = true; isFocusableInTouchMode = true }
+        root.addView(focusSink, FrameLayout.LayoutParams(1, 1))
         setContentView(root)
         setCanceledOnTouchOutside(false)
         setupList()
@@ -142,23 +146,56 @@ class PanelDialog(
     private var posAnim: ValueAnimator? = null
     private val imeInterp = PathInterpolator(0.2f, 0f, 0f, 1f)   // 키보드 애니메이션과 비슷한 곡선
 
+    private var replyAnchor: View? = null
+    private var savedH = 0
+
+    /** 답장 중인 카드의 아래 끝(창 안 좌표) */
+    private fun anchorBottomInWindow(): Int? {
+        val v = replyAnchor ?: return null
+        if (!v.isAttachedToWindow) return null
+        val loc = IntArray(2)
+        v.getLocationInWindow(loc)
+        return loc[1] + v.height
+    }
+
+    /** 답장 카드 아래 끝이 키보드 위 '카드 간격(10dp)' 자리에 오도록 하는 창 위치 */
     private fun targetYFor(imeTop: Int): Int {
         val h = window?.attributes?.height ?: 0
-        return minOf(baseY, (imeTop - dp(8) - h).coerceAtLeast(dp(30)))
+        return (imeTop - dp(10) - h).coerceAtLeast(dp(30))
     }
 
     /** 입력칸 열림/닫힘: 키보드가 움직이기 시작하는 순간 같이 움직임 */
-    fun watchKeyboard(on: Boolean) {
+    fun watchKeyboard(on: Boolean, anchor: View? = null) {
         keyboardWatch = on
         main.removeCallbacks(keyboardTick)
+        val w = window ?: return
+        val closeBtn = content.findViewById<View>(R.id.close)
         if (on) {
             imeSeen = false
             lastIme = 0
-            watchStart = android.os.SystemClock.uptimeMillis()
-            // 지난번에 잰 키보드 높이로 바로 출발 (키보드와 동시에)
+            replyAnchor = anchor
+            // 창을 답장 카드 바로 아래까지만 남기고 자름 (그 아래 카드·X가 키보드 위를 덮지 않게)
+            savedH = w.attributes.height
+            val ab = anchorBottomInWindow()
+            if (ab != null) {
+                val newH = (ab + dp(12)).coerceIn(dp(120), savedH)
+                if (newH != savedH) {
+                    val lp = w.attributes
+                    lp.height = newH
+                    w.attributes = lp
+                }
+            }
+            closeBtn.animate().alpha(0f).setDuration(150).start()
             slideWindowTo(targetYFor(screenH - cachedImeHeight), 285)
             main.postDelayed(keyboardTick, 120)
         } else {
+            replyAnchor = null
+            if (savedH > 0 && w.attributes.height != savedH) {
+                val lp = w.attributes
+                lp.height = savedH
+                w.attributes = lp
+            }
+            closeBtn.animate().alpha(1f).setDuration(200).start()
             slideWindowTo(baseY, 250)
             if (refreshPending) scheduleRefresh()   // 답장하는 동안 미뤄둔 새 알림 반영
         }
@@ -208,9 +245,7 @@ class PanelDialog(
     /** 입력칸에서 포커스 빼기 (입력칸으로 다시 돌아가지 않도록 목록에 포커스를 줌) */
     private fun dropFocus() {
         if (currentFocus !is android.widget.EditText) return
-        list.isFocusableInTouchMode = true
-        list.requestFocus()
-        list.isFocusableInTouchMode = false
+        focusSink.requestFocus()
     }
 
     private var imeShift = 0
@@ -364,7 +399,6 @@ class PanelDialog(
             val x = event.x.toInt()
             val y = event.y.toInt()
             if (x < 0 || y < 0 || x > d.width || y > d.height) {
-                if (keyboardWatch) { dropFocus(); return true }   // 답장 중이면 입력만 닫기
                 closeAnimated("패널 바깥 터치")
                 return true
             }
@@ -375,7 +409,7 @@ class PanelDialog(
     /** 뒤로가기: 답장 입력 중이면 입력만 닫고 패널은 유지 */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (keyboardWatch || currentFocus is android.widget.EditText) {
+        if (keyboardWatch && currentFocus is android.widget.EditText) {
             dropFocus()
             return
         }
@@ -393,7 +427,7 @@ class PanelDialog(
             onOpen = { openNotification(it) },
             onAction = { a -> sendPending(a.actionIntent) },   // 읽음 등: 패널 유지
             onReply = { a, text -> sendReply(a, text) },
-            onReplyOpen = { open -> watchKeyboard(open) },
+            onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
             onToggle = { pos -> animateChange { adapter.notifyItemChanged(pos) } }
         )
@@ -405,7 +439,7 @@ class PanelDialog(
         list.setHasFixedSize(false)
         // 좌우로 미는 동안에는 다른 카드 위치·크기를 그대로 유지 (재계산 안 함)
         list.viewTreeObserver.addOnPreDrawListener {
-            if (!horizontalLock && !swiping) applyStack()
+            if (!horizontalLock && !swiping && !keyboardWatch) applyStack()
             true
         }
         setupBounce()

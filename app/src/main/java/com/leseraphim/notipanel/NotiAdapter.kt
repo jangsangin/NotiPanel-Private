@@ -42,7 +42,7 @@ class NotiAdapter(
     private val onOpen: (StatusBarNotification) -> Unit,
     private val onAction: (Notification.Action) -> Unit,
     private val onReply: (Notification.Action, CharSequence) -> Unit,
-    private val onReplyOpen: (Boolean) -> Unit = {},
+    private val onReplyOpen: (Boolean, View?) -> Unit = { _, _ -> },
     private val onToggle: (Int) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -396,7 +396,7 @@ class NotiAdapter(
             replyInput.requestFocus()
             imm.showSoftInput(replyInput, 0)
             replyInput.postDelayed({ if (replyOpen) imm.showSoftInput(replyInput, 0) }, 80)
-            onReplyOpen(true)
+            onReplyOpen(true, card)
 
             val send = {
                 val t = replyInput.text
@@ -421,7 +421,7 @@ class NotiAdapter(
             replyOpen = false
             replyInput.setOnFocusChangeListener(null)
             imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
-            onReplyOpen(false)
+            onReplyOpen(false, null)
             card.isFocusableInTouchMode = true
             card.requestFocus()
             card.isFocusableInTouchMode = false

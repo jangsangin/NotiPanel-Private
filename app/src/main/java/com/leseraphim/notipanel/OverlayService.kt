@@ -126,6 +126,7 @@ class OverlayService : Service() {
         rebuildBar()
         handler.postDelayed(sampler, 800)
         RootShell.warmUp()
+        HeadsUp.restore(this)
         if (A11yService.instance == null) {
             if (!PermissionFixer.restoreNoRoot(this)) PermissionFixer.restore(this)
         }
@@ -146,6 +147,7 @@ class OverlayService : Service() {
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
         panel?.dismissNow()
+        HeadsUp.restore(this)
         removeBar()
         super.onDestroy()
     }
@@ -462,9 +464,11 @@ class OverlayService : Service() {
         val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
         val host: Context = A11yService.instance ?: this
         panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this)).also {
-            it.setOnDismissListener { panel = null; refreshStatus() }
+            it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
             it.showAnimated()
         }
+        // 패널이 열린 동안 상단 배너 끄기 (새 알림은 패널에만)
+        HeadsUp.suppress(this)
     }
 
 }
