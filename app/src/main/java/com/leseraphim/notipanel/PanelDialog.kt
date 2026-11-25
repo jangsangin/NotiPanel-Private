@@ -239,6 +239,26 @@ class PanelDialog(
         return loc[1] + v.height
     }
 
+    private var anchorCard: View? = null
+    private var anchorLayoutListener: View.OnLayoutChangeListener? = null
+    private var lastImeTopForFit: Int? = null
+
+    /** 창 아래 끝 = 답장 카드 아래 끝 + 12dp (위·옆 간격과 같게) */
+    private fun fitToAnchor(slide: Boolean = false) {
+        val w = window ?: return
+        val ab = anchorBottomInWindow() ?: return
+        val newH = (ab + dp(12)).coerceIn(dp(120), maxOf(savedH, ab + dp(12)))
+        if (newH == w.attributes.height) return
+        val lp = w.attributes
+        lp.height = newH
+        w.attributes = lp
+        if (slide) {
+            // 키보드 바로 위 자리는 그대로 유지
+            val imeTop = lastImeTopForFit ?: (screenH - cachedImeHeight)
+            slideWindowTo(targetYFor(imeTop), 120)
+        }
+    }
+
     /** 답장 카드 아래 끝이 키보드 위 '카드 간격(10dp)' 자리에 오도록 하는 창 위치 */
     private fun targetYFor(imeTop: Int): Int {
         val h = window?.attributes?.height ?: 0
@@ -259,20 +279,23 @@ class PanelDialog(
             cardOf(anchor)?.let { card -> if (card.top < 0) list.scrollBy(0, card.top) }
             // 창을 답장 카드 바로 아래까지만 남기고 자름 (그 아래 카드·X가 키보드 위를 덮지 않게)
             savedH = w.attributes.height
-            val ab = anchorBottomInWindow()
-            if (ab != null) {
-                val newH = (ab + dp(12)).coerceIn(dp(120), savedH)
-                if (newH != savedH) {
-                    val lp = w.attributes
-                    lp.height = newH
-                    w.attributes = lp
+            fitToAnchor()
+            // 버튼 줄 → 입력칸으로 바뀌며 카드 크기가 변해도 아래 간격이 위·옆과 같게(12dp) 계속 맞춤
+            cardOf(anchor)?.let { card ->
+                anchorLayoutListener?.let { l -> anchorCard?.removeOnLayoutChangeListener(l) }
+                val l = View.OnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob ->
+                    if (keyboardWatch && (b - t) != (ob - ot)) fitToAnchor(slide = true)
                 }
+                card.addOnLayoutChangeListener(l)
+                anchorCard = card; anchorLayoutListener = l
             }
             closeBtn.animate().alpha(0f).setDuration(150).start()
             slideWindowTo(targetYFor(screenH - cachedImeHeight), 285)
             main.postDelayed(keyboardTick, 120)
         } else {
             replyAnchor = null
+            anchorLayoutListener?.let { l -> anchorCard?.removeOnLayoutChangeListener(l) }
+            anchorCard = null; anchorLayoutListener = null
             // 저장해 둔 값 대신 '고정 아래 끝 + 지금 패널 크기'로 정확히 복귀
             val wantH = bottom - top
             if (w.attributes.height != wantH) {
@@ -296,6 +319,7 @@ class PanelDialog(
                 val imeTop = a11y.imeTop()
                 if (imeTop != null) {
                     imeSeen = true
+                    lastImeTopForFit = imeTop
                     cachedImeHeight = screenH - imeTop
                     val want = targetYFor(imeTop)
                     val cur = window?.attributes?.y ?: want
