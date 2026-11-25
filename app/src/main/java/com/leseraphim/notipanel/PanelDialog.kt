@@ -616,10 +616,7 @@ class PanelDialog(
             val c = list.getChildAt(i)
             if (list.getChildAdapterPosition(c) >= 2 && c.bottom > floor) { overflow = true; break }
         }
-        if (!overflow && toBottom <= 0f) overflow = false
-        val stackW = if (!overflow && list.childCount <= adapter.itemCount &&
-            !list.canScrollVertically(1)) 0f
-            else (toBottom / (90 * density)).coerceIn(0f, 1f)
+        val stackW = if (!overflow) 0f else (toBottom / (90 * density)).coerceIn(0f, 1f)
 
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
