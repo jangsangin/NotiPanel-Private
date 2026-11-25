@@ -88,6 +88,21 @@ class PanelDialog(
         setupWindow()
     }
 
+    /** 접힌 알림 3개 + 간격 + X 버튼 영역 높이 */
+    private fun threeCardHeight(): Int {
+        val gap = dp(10)
+        // 화면에 있는 접힌 카드 높이를 재서 씀 (없으면 대략값)
+        var cardH = 0
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            val pos = list.getChildAdapterPosition(c)
+            if (pos != RecyclerView.NO_POSITION && !adapter.isExpanded(pos)) { cardH = c.height; break }
+        }
+        if (cardH <= 0) cardH = dp(80)
+        val xZone = dp(6 + 36 + 12)              // 마지막 카드와 1mm 간격 + X + 아래 여백
+        return (list.paddingTop + (cardH + gap) * 3 - gap + xZone).coerceAtMost(maxHeight())
+    }
+
     /** 기본(최대) 패널 높이: 화면의 61.6% (예전 56%에서 10% 키움) */
     private fun maxHeight() = (screenH * 0.616f).toInt()
 
@@ -316,8 +331,8 @@ class PanelDialog(
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
                 dp(20) + dp(8)
-        // 알림이 3개 이상이면 내용과 상관없이 기본 크기로 고정
-        val h = if (adapter.itemCount >= 3) maxHeight() else need.coerceIn(dp(180), maxHeight())
+        // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
+        val h = if (adapter.itemCount >= 3) threeCardHeight() else need.coerceIn(dp(180), maxHeight())
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
         if (growOnly && h <= bottom - top) return
         top = bottom - h
