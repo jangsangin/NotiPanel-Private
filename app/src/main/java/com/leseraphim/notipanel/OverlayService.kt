@@ -44,6 +44,7 @@ class OverlayService : Service() {
     private var button: FrameLayout? = null
     private lateinit var buttonLp: WindowManager.LayoutParams
     private var panel: PanelDialog? = null
+    private lateinit var bg: GradientDrawable
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -123,11 +124,13 @@ class OverlayService : Service() {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
         root.addView(icon, FrameLayout.LayoutParams(-1, -1))
-        root.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
+        bg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 9999f
             setColor(0x66FFFFFF)
             setStroke(dp(1), 0x88FFFFFF.toInt())
         }
+        root.background = bg
 
         val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
@@ -147,12 +150,12 @@ class OverlayService : Service() {
 
     private fun applyButtonStyle(addFirst: Boolean = false) {
         val b = button ?: return
+        if (hidden) return
         val size = dp(Prefs.sizeDp(this))
         buttonLp.width = size
         buttonLp.height = size
         (b.getChildAt(0) as ImageView).setPadding(size / 4, size / 4, size / 4, size / 4)
-        b.alpha = Prefs.opacity(this) / 100f * (if (hidden) 0.6f else 1f)
-        if (hidden) { if (!addFirst) runCatching { wm.updateViewLayout(b, buttonLp) }; return }
+        b.alpha = Prefs.opacity(this) / 100f
         val x = Prefs.posX(this)
         val y = Prefs.posY(this)
         if (x < 0 || y < 0) placeDefault(update = false) else {
@@ -246,8 +249,9 @@ class OverlayService : Service() {
     private val homeListener: (Boolean) -> Unit = { home -> setHidden(!home) }
 
     /**
-     * 숨길 때: 가까운 화면 옆으로 미끄러져 들어가 30%만 살짝 보이고, 터치는 통과시킴
-     * 보일 때: 원래 자리로 튕기듯 돌아옴
+     * 숨길 때: 아이콘이 얇은 회색 세로 바로 변하면서
+     *          화면 오른쪽 끝, 아래에서 30% 높이로 미끄러져 붙음 (터치는 통과)
+     * 보일 때: 바가 다시 동그란 아이콘으로 변하며 원래 자리로 돌아옴
      */
     private fun setHidden(hide: Boolean, animate: Boolean = true) {
         val b = button ?: return
@@ -255,33 +259,56 @@ class OverlayService : Service() {
         hidden = hide
         if (hide) panel?.closeAnimated()
 
-        val (w, _) = screenSize()
-        val size = buttonLp.width
+        val (w, h) = screenSize()
+        val icon = b.getChildAt(0)
+        val size = dp(Prefs.sizeDp(this))
+
+        // 바 크기·위치 (영상 속 회색 바 비율)
+        val barW = dp(5)
+        val barH = (h * 0.095f).toInt()
+        val barX = w - dp(5) - barW
+        val barY = (h * 0.70f).toInt() - barH / 2
+
         val homeX = Prefs.posX(this).takeIf { it >= 0 } ?: defaultX()
-        val toRight = homeX + size / 2 > w / 2
-        val sideX = if (toRight) w - (size * 0.3f).toInt() else -(size * 0.7f).toInt()
-        val fromX = buttonLp.x
-        val targetX = if (hide) sideX else (Prefs.posX(this).takeIf { it >= 0 } ?: defaultX())
+        val homeY = Prefs.posY(this).takeIf { it >= 0 } ?: ((h * 0.824f).toInt() - size / 2)
+
+        val f = Rect(buttonLp.x, buttonLp.y, buttonLp.x + buttonLp.width, buttonLp.y + buttonLp.height)
+        val t = if (hide) Rect(barX, barY, barX + barW, barY + barH)
+                else Rect(homeX, homeY, homeX + size, homeY + size)
         val fromA = b.alpha
-        val baseA = Prefs.opacity(this) / 100f
-        val targetA = if (hide) (baseA * 0.6f) else baseA
+        val toA = if (hide) 0.85f else Prefs.opacity(this) / 100f
+        val fromIcon = icon.alpha
+        val toIcon = if (hide) 0f else 1f
 
         setTouchable(!hide)
         hideAnim?.cancel()
-        if (!animate) {
-            buttonLp.x = targetX; b.alpha = targetA
+
+        fun frame(p: Float, colorP: Float) {
+            buttonLp.x = (f.left + (t.left - f.left) * p).toInt()
+            buttonLp.y = (f.top + (t.top - f.top) * p).toInt()
+            buttonLp.width = maxOf(1, (f.width() + (t.width() - f.width()) * p).toInt())
+            buttonLp.height = maxOf(1, (f.height() + (t.height() - f.height()) * p).toInt())
+            bg.cornerRadius = minOf(buttonLp.width, buttonLp.height) / 2f
+            val c = colorP.coerceIn(0f, 1f)
+            // 아이콘(흰 반투명) ↔ 바(연회색)
+            bg.setColor(android.graphics.Color.argb(
+                (0x66 + (0xB0 - 0x66) * c).toInt(),
+                (255 - 35 * c).toInt(), (255 - 35 * c).toInt(), (255 - 35 * c).toInt()
+            ))
+            bg.setStroke(if (c > 0.5f) 0 else dp(1), 0x88FFFFFF.toInt())
+            b.alpha = fromA + (toA - fromA) * p.coerceIn(0f, 1f)
+            icon.alpha = (fromIcon + (toIcon - fromIcon) * (p * 1.6f).coerceIn(0f, 1f))
             runCatching { wm.updateViewLayout(b, buttonLp) }
-            return
         }
+
+        if (!animate) { frame(1f, if (hide) 1f else 0f); return }
         hideAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = if (hide) 320 else 420
+            duration = if (hide) 380 else 460
             interpolator = if (hide) android.view.animation.PathInterpolator(0.3f, 0f, 0.1f, 1f)
-                           else android.view.animation.OvershootInterpolator(1.1f)
+                           else android.view.animation.OvershootInterpolator(1.0f)
             addUpdateListener {
-                val t = it.animatedValue as Float
-                buttonLp.x = (fromX + (targetX - fromX) * t).toInt()
-                b.alpha = fromA + (targetA - fromA) * t.coerceIn(0f, 1f)
-                runCatching { wm.updateViewLayout(b, buttonLp) }
+                val p = it.animatedValue as Float
+                frame(p, if (hide) p else 1f - p)
             }
             start()
         }
