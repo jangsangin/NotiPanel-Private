@@ -478,9 +478,8 @@ class NotiAdapter(
                 line2.text = t
             }
             line2.visibility = if (line2.text.isNullOrEmpty()) View.GONE else View.VISIBLE
-            // 답장 가능한 채팅 알림이면 접힌 카드에도 '답장' 버튼
-            val canReply = n.actions?.any { !it.remoteInputs.isNullOrEmpty() } == true
-            if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
+            // 접힌 카드는 두 줄만 (답장·읽음 버튼은 화살표로 펼치면 나옴)
+            replyBox.hide()
             setupExpand(this, g)
             itemView.setOnClickListener { onOpen(sbn) }
         }
