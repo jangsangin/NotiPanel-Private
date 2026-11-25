@@ -363,7 +363,11 @@ class PanelDialog(
         list.adapter = adapter
         list.itemAnimator = null
         list.setHasFixedSize(false)
-        list.viewTreeObserver.addOnPreDrawListener { applyStack(); true }
+        // 좌우로 미는 동안에는 다른 카드 위치·크기를 그대로 유지 (재계산 안 함)
+        list.viewTreeObserver.addOnPreDrawListener {
+            if (!horizontalLock && !swiping) applyStack()
+            true
+        }
         setupBounce()
 
         // 좌우로 밀어서 알림 지우기
@@ -419,7 +423,7 @@ class PanelDialog(
                     MotionEvent.ACTION_DOWN -> {
                         lastY = e.rawY; spring?.cancel(); touching = true
                         downX = e.rawX; downY = e.rawY
-                        decided = false; horizontalLock = false
+                        decided = false; horizontalLock = false; verticalDecided = false
                     }
                     MotionEvent.ACTION_MOVE -> {
                         if (!decided) {
@@ -428,6 +432,8 @@ class PanelDialog(
                             if (dx > slop || dy > slop) {
                                 decided = true
                                 horizontalLock = dx > dy
+                                verticalDecided = !horizontalLock
+                                if (verticalDecided) lastY = e.rawY
                             }
                         }
                         if (pull == 0f) lastY = e.rawY
@@ -445,7 +451,7 @@ class PanelDialog(
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel(); touching = true }
                 MotionEvent.ACTION_MOVE -> {
-                    if (horizontalLock || swiping) return@setOnTouchListener false
+                    if (horizontalLock || swiping || !verticalDecided) return@setOnTouchListener false
                     val dy = e.rawY - lastY
                     lastY = e.rawY
                     val atTop = !list.canScrollVertically(-1)
@@ -690,6 +696,7 @@ class PanelDialog(
 
     private var swiping = false
     private var horizontalLock = false     // 좌우로 미는 중 → 세로 스크롤 잠금
+    private var verticalDecided = false    // 위아래로 움직이기로 확정됨 → 튕김 허용
     private var touching = false
     private var refreshPending = false
 
