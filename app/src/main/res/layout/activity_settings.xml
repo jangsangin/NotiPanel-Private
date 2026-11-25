@@ -35,7 +35,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="접근성: 다른 앱에서 아이콘 숨기기 + 두 번 터치로 화면 끄기에 필요해요"
+            android:text="접근성: 사이드바를 키보드 위에 표시 + 터치 즉시 전달 + 배경 따라 명암 (추천)"
             android:textSize="12sp" />
 
         <com.google.android.material.materialswitch.MaterialSwitch

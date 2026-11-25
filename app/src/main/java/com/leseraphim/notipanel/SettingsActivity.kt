@@ -26,7 +26,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
-        title = "노티패널 설정"
+        val ver = packageManager.getPackageInfo(packageName, 0).versionName
+        title = "노티패널 설정  v$ver"
 
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)

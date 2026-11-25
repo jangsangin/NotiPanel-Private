@@ -11,8 +11,10 @@ android {
         applicationId = "com.leseraphim.notipanel"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // GitHub Actions 빌드 번호를 버전으로 사용 → 빌드마다 버전이 올라감
+        val run = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
+        versionCode = run
+        versionName = "1.$run"
     }
 
     // 매번 같은 키로 서명해야 새 APK를 덮어쓰기 설치할 수 있음
