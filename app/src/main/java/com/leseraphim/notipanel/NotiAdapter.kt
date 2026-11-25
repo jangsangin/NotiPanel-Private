@@ -70,6 +70,28 @@ class NotiAdapter(
     }
     private val appIcons = HashMap<String, Drawable?>()
     private val density = ctx.resources.displayMetrics.density
+    private val cardDark = Prefs.cardDark(ctx)
+
+    /** 노티바 배경: 0% = 밝은 반투명 유리, 100% = 짙은 회색 유리 (설정에서 조절) */
+    private fun cardBg(): android.graphics.drawable.Drawable {
+        val t = cardDark / 100f
+        fun mix(a: Int, b: Int): Int {
+            fun ch(x: Int, y: Int) = (x + (y - x) * t).toInt()
+            return Color.argb(
+                ch(Color.alpha(a), Color.alpha(b)), ch(Color.red(a), Color.red(b)),
+                ch(Color.green(a), Color.green(b)), ch(Color.blue(a), Color.blue(b))
+            )
+        }
+        val top = mix(Color.argb(0x52, 255, 255, 255), Color.argb(238, 62, 62, 62))
+        val mid = mix(Color.argb(0x33, 255, 255, 255), Color.argb(238, 52, 52, 52))
+        val end = mix(Color.argb(0x24, 255, 255, 255), Color.argb(240, 44, 44, 44))
+        return android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, mid, end)
+        ).apply {
+            cornerRadius = 26 * density
+            setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(0x59, 255, 255, 255))
+        }
+    }
 
     init { setHasStableIds(true) }
 
@@ -202,6 +224,7 @@ class NotiAdapter(
         private val replyBox = ReplyBox(v)
 
         init {
+            itemView.background = cardBg()
             round(icon); round(appIconV)
             pictureV.clipToOutline = true
             pictureV.outlineProvider = object : ViewOutlineProvider() {
@@ -449,6 +472,7 @@ class NotiAdapter(
         private val replyBox = ReplyBox(v)
 
         init {
+            itemView.background = cardBg()
             icon.outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, o: Outline) =
                     o.setRoundRect(0, 0, view.width, view.height, 12 * density)
