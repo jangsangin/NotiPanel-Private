@@ -229,7 +229,7 @@ class PanelDialog(
      * 패널 높이를 내용에 맞춤: 첫 알림 전체 + 두 번째 알림 + 뒤에 쌓인 카드 여유 + X 버튼.
      * 아래 끝은 고정, 위쪽을 맞춘다. 창 크기는 여기서 한 번만 바뀐다.
      */
-    private fun fitHeight(onlyIfChangedBy: Int = 0) {
+    private fun fitHeight(onlyIfChangedBy: Int = 0, growOnly: Boolean = false) {
         val gap = dp(10)
         val first = list.getChildAt(0)
         val second = list.getChildAt(1)
@@ -252,6 +252,7 @@ class PanelDialog(
                 dp(20) + list.paddingBottom
         val h = need.coerceIn(dp(180), maxHeight())
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
+        if (growOnly && h <= bottom - top) return
         top = bottom - h
         placeWindow(top, h)
     }
@@ -544,6 +545,7 @@ class PanelDialog(
             val c = list.getChildAt(i)
             val pos = list.getChildAdapterPosition(c)
             val h = c.height.coerceAtLeast(1).toFloat()
+            var stackedBehind = false
             c.pivotX = c.width / 2f
             c.pivotY = c.height.toFloat()
             if (pos >= 2 && c.bottom > limit) {
@@ -557,6 +559,9 @@ class PanelDialog(
                 val a0 = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
                 c.alpha = 1f + (a0 - 1f) * stackW
                 c.translationZ = -depth * stackW
+                // 앞 카드 뒤로 겹쳐 들어간 카드 → 글씨가 비치지 않게 블러 + 어둡게
+                stackedBehind = stackW > 0.3f
+                if (stackedBehind) c.alpha *= 0.75f
                 // (블러는 아래에서 X 기준 그라데이션으로)
             } else if (c.top < 0) {
                 val p = (-c.top / h).coerceIn(0f, 1f)
@@ -590,7 +595,9 @@ class PanelDialog(
 
             // X 버튼과 겹치는 부분부터 아래로 점점 진해지는 블러
             // (첫 카드 제외, 카드의 둥근 모양 안에서만, 겹치지 않는 윗부분은 선명)
-            if (pos >= 1) {
+            if (stackedBehind) {
+                ProgressiveBlur.apply(c, -2f, -1f, 16 * density)     // 카드 전체 블러
+            } else if (pos >= 1) {
                 val s = c.scaleY.coerceAtLeast(0.5f)
                 val ty = c.translationY
                 val hh = c.height.toFloat()
@@ -649,7 +656,7 @@ class PanelDialog(
                 list.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 list.post {
                     val oldTop = top
-                    fitHeight(onlyIfChangedBy = dp(6))
+                    fitHeight(onlyIfChangedBy = dp(6), growOnly = true)
                     val shift = (oldTop - top).toFloat()   // 위로 커지면 +
                     if (shift != 0f) {
                         // 창이 바뀐 만큼 내용이 튀지 않게 잠깐 반대로 밀어뒀다가 스프링으로 제자리
