@@ -27,6 +27,14 @@ object NotificationStore {
         service?.cancelNotification(sbn.key)
     }
 
+    /** 여러 개를 하나씩 확실하게 지우기 */
+    fun dismissMany(list: List<StatusBarNotification>) {
+        val svc = service ?: return
+        if (list.isEmpty()) return
+        runCatching { svc.cancelNotifications(list.map { it.key }.toTypedArray()) }
+            .onFailure { list.forEach { runCatching { svc.cancelNotification(it.key) } } }
+    }
+
     fun dismissAll() {
         service?.cancelAllNotifications()
     }

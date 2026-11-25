@@ -384,16 +384,12 @@ class OverlayService : Service() {
         if (panel?.isShowing == true) return
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
-        val start = Rect(loc[0], loc[1], loc[0] + from.width, loc[1] + from.height)
-
-        val (w, h) = screenSize()
-        val margin = dp(14)
-        val end = Rect(margin, (h * 0.31f).toInt(), w - margin, (h * 0.72f).toInt())
-
+        val anchorY = loc[1] + from.height / 2
         val host: Context = A11yService.instance ?: this
-        panel = PanelDialog(host, start, end, Prefs.blur(this)).also {
+        panel = PanelDialog(host, anchorY, Prefs.blur(this)).also {
             it.setOnDismissListener { panel = null }
             it.showAnimated()
         }
     }
+
 }

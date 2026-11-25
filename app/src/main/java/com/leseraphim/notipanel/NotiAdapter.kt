@@ -191,66 +191,67 @@ class NotiAdapter(
             timeV.text = time(sbn)
             titleV.text = title(n)
 
-            // 메시지 목록 (대화형이면 최근 4개, 아니면 본문)
+            // 메시지 (패널이 너무 커지지 않게: 최근 3개, 각 2줄)
             messagesV.removeAllViews()
-            val msgs = messages(n).takeLast(4)
+            val msgs = messages(n).takeLast(3)
             if (msgs.isNotEmpty()) {
-                var lastSender: CharSequence? = null
                 for ((sender, t) in msgs) {
-                    if (sender != null && sender.toString() != lastSender?.toString()) {
-                        messagesV.addView(line(bold(sender), 16f, 1f, top = dp(6)))
-                        lastSender = sender
+                    val sb = SpannableStringBuilder()
+                    if (sender != null && sender.toString() != title(n).toString()) {
+                        sb.append(bold(sender)).append("  ")
                     }
-                    messagesV.addView(line(t, 16f, 0.95f))
+                    sb.append(t)
+                    messagesV.addView(line(sb, 14f, 0.95f, maxLines = 2, top = dp(3)))
                 }
             } else {
                 val t = text(n)
-                if (t.isNotEmpty()) messagesV.addView(line(t, 16f, 0.95f, maxLines = 8))
+                if (t.isNotEmpty()) messagesV.addView(line(t, 14f, 0.95f, maxLines = 4))
             }
-            // 같은 앱의 다른 알림들도 아래에 짧게
-            g.items.drop(1).take(3).forEach {
+            // 같은 앱의 다른 알림 2개까지 한 줄씩
+            g.items.drop(1).take(2).forEach {
                 val s = SpannableStringBuilder(bold(title(it.notification))).append("  ").append(text(it.notification))
-                messagesV.addView(line(s, 14f, 0.75f, maxLines = 1, top = dp(6)))
+                messagesV.addView(line(s, 13f, 0.7f, maxLines = 1, top = dp(4)))
             }
 
             val pic = picture(n)
             pictureV.visibility = if (pic != null) View.VISIBLE else View.GONE
             pictureV.setImageBitmap(pic)
 
-            // 알림 버튼들 (읽음, 답장 …)
-            actionsV.removeAllViews()
-            replyRow.visibility = View.GONE
+            // 답장 가능한 알림(카톡·문자 등)은 입력칸을 바로 보여줌
             val acts = n.actions ?: emptyArray()
-            acts.take(3).forEach { a ->
+            val replyAction = acts.firstOrNull { !it.remoteInputs.isNullOrEmpty() }
+            if (replyAction != null) setupReply(replyAction) else replyRow.visibility = View.GONE
+
+            // 나머지 버튼들 (읽음 등)
+            actionsV.removeAllViews()
+            val others = acts.filter { it !== replyAction }.take(3)
+            others.forEach { a ->
                 val b = TextView(ctx).apply {
                     text = a.title
                     setTextColor(Color.WHITE)
-                    textSize = 15f
+                    textSize = 13f
                     setBackgroundResource(R.drawable.pill_bg)
-                    setPadding(dp(22), dp(11), dp(22), dp(11))
-                    setOnClickListener {
-                        if (!a.remoteInputs.isNullOrEmpty()) openReply(a) else onAction(a)
-                    }
+                    setPadding(dp(16), dp(7), dp(16), dp(7))
+                    setOnClickListener { onAction(a) }
                 }
-                val lp = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) }
+                val lp = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }
                 actionsV.addView(b, lp)
             }
-            actionsV.visibility = if (acts.isEmpty()) View.GONE else View.VISIBLE
+            actionsV.visibility = if (others.isEmpty()) View.GONE else View.VISIBLE
 
             itemView.setOnClickListener { onOpen(sbn) }
         }
 
-        private fun openReply(a: Notification.Action) {
+        private fun setupReply(a: Notification.Action) {
             replyRow.visibility = View.VISIBLE
-            replyInput.setText("")
-            replyInput.requestFocus()
+            val hint = a.remoteInputs?.firstOrNull()?.label?.takeIf { it.isNotBlank() } ?: "답장 보내기"
+            replyInput.hint = hint
             val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-            replyInput.post { imm.showSoftInput(replyInput, 0) }
             val send = {
                 val t = replyInput.text
                 if (!t.isNullOrBlank()) {
                     onReply(a, t.toString())
-                    replyRow.visibility = View.GONE
+                    replyInput.setText("")
                     imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
                 }
             }
