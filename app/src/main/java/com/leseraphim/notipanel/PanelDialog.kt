@@ -173,6 +173,7 @@ class PanelDialog(
         lp.height = h
         w.attributes = lp
         baseY = y
+        content.requestLayout()
     }
 
     // ───────── 키보드 따라 패널 올리기 (키보드 애니메이션과 같은 시간·곡선) ─────────
@@ -489,6 +490,7 @@ class PanelDialog(
         }
         list.adapter = adapter
         list.itemAnimator = null
+        list.setRecyclerListener { vh -> resetCard(vh.itemView); ProgressiveBlur.clear(vh.itemView) }
         list.setHasFixedSize(false)
         // 좌우로 미는 동안에는 다른 카드 위치·크기를 그대로 유지 (재계산 안 함)
         list.viewTreeObserver.addOnPreDrawListener {
@@ -788,12 +790,36 @@ class PanelDialog(
         refitAfterLayout(allowShrink)
     }
 
+    /** 목록이 바뀐 뒤 최종 배치 확정: 남아 있던 잘림·쌓임 흔적을 지우고 다시 계산 */
+    private fun settle() {
+        if (closing) return
+        moveDelta.clear(); newIds.clear()
+        content.requestLayout()
+        list.requestLayout()
+        list.post {
+            for (i in 0 until list.childCount) resetCard(list.getChildAt(i))
+            applyStack()
+            list.invalidate()
+        }
+    }
+
+    /** 카드에 걸어둔 변형·잘림·블러를 원래대로 */
+    private fun resetCard(c: View) {
+        c.translationY = 0f; c.translationZ = 0f
+        c.scaleX = 1f; c.scaleY = 1f; c.alpha = 1f
+        setContentAlpha(c, 1f)
+        if ((c.getTag(R.id.clip_h) as? Int ?: -1) != -1) { c.setTag(R.id.clip_h, -1); c.invalidateOutline() }
+    }
+
     private fun startMove() {
         moveAnim?.cancel()
         moveT = 0f
         moveAnim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 300
             addUpdateListener { moveT = it.animatedValue as Float; list.invalidate() }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: android.animation.Animator) = settle()
+            })
             start()
         }
     }
