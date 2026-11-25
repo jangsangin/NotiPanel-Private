@@ -137,4 +137,60 @@ class A11yService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
+
+    /** 터치를 밑에 있는 앱에 다시 넣기 (탭 또는 짧은 스와이프) */
+    fun replay(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long, done: () -> Unit): Boolean {
+        val path = android.graphics.Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(
+            path, 0, durationMs.coerceIn(40, 1500)
+        )
+        val g = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+        return dispatchGesture(g, object : GestureResultCallback() {
+            override fun onCompleted(d: android.accessibilityservice.GestureDescription?) = done()
+            override fun onCancelled(d: android.accessibilityservice.GestureDescription?) = done()
+        }, null)
+    }
+
+    // 캡처 처리는 백그라운드에서 (화면 끊김 방지)
+    private val shotExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 화면 캡처 → 원하는 영역 평균 밝기(0~1). 실패하면 null */
+    fun sampleLuminance(area: android.graphics.Rect, cb: (Float?) -> Unit) {
+        if (android.os.Build.VERSION.SDK_INT < 30) { cb(null); return }
+        runCatching {
+            takeScreenshot(android.view.Display.DEFAULT_DISPLAY, shotExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(r: ScreenshotResult) {
+                        val hw = android.graphics.Bitmap.wrapHardwareBuffer(r.hardwareBuffer, r.colorSpace)
+                        val bmp = hw?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                        hw?.recycle(); r.hardwareBuffer.close()
+                        if (bmp == null) { mainHandler.post { cb(null) }; return }
+                        var sum = 0f; var n = 0
+                        val step = 6
+                        val x0 = area.left.coerceIn(0, bmp.width - 1)
+                        val x1 = area.right.coerceIn(0, bmp.width - 1)
+                        val y0 = area.top.coerceIn(0, bmp.height - 1)
+                        val y1 = area.bottom.coerceIn(0, bmp.height - 1)
+                        var y = y0
+                        while (y <= y1) {
+                            var x = x0
+                            while (x <= x1) {
+                                val c = bmp.getPixel(x, y)
+                                sum += (0.2126f * android.graphics.Color.red(c) +
+                                        0.7152f * android.graphics.Color.green(c) +
+                                        0.0722f * android.graphics.Color.blue(c)) / 255f
+                                n++
+                                x += step
+                            }
+                            y += step
+                        }
+                        bmp.recycle()
+                        val res = if (n > 0) sum / n else null
+                        mainHandler.post { cb(res) }
+                    }
+                    override fun onFailure(errorCode: Int) { mainHandler.post { cb(null) } }
+                })
+        }.onFailure { cb(null) }
+    }
 }

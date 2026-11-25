@@ -80,6 +80,7 @@ class OverlayService : Service() {
         A11yService.pkgListener = { refreshStatus() }
         updateWatcher()
         rebuildBar()
+        handler.postDelayed(sampler, 800)
         if (A11yService.instance == null) {
             Toast.makeText(this, "접근성을 켜야 사이드바가 키보드 위에 보여요", Toast.LENGTH_LONG).show()
         }
@@ -187,7 +188,7 @@ class OverlayService : Service() {
         val ctx: Context = a11y ?: this
 
         val (_, h) = screenSize()
-        val touchW = dp(28)                 // 실제 터치 폭
+        val touchW = dp(14)                 // 실제 터치 폭 (가장자리만)
         val barW = dp(6)                    // 보이는 바 두께
         val barH = (h * 0.12f).toInt()      // 바 길이
         val centerY = (h * 0.73f).toInt()   // 화면 위에서 73% 지점 (키보드 모음 자리)
@@ -204,7 +205,7 @@ class OverlayService : Service() {
             elevation = dp(2).toFloat()
         }
         root.addView(bar, FrameLayout.LayoutParams(barW, barH, Gravity.END or Gravity.CENTER_VERTICAL)
-            .apply { marginEnd = dp(4) })
+            .apply { marginEnd = dp(3) })
 
         val lp = WindowManager.LayoutParams(
             touchW, barH, type,
@@ -252,6 +253,7 @@ class OverlayService : Service() {
         val off = dp(14).toFloat()
         if (show) {
             root.visibility = View.VISIBLE
+            handler.postDelayed({ sampleBackground() }, 350)
             if (animate) {
                 bar.translationX = off
                 bar.animate().translationX(0f).setDuration(260)
@@ -272,29 +274,107 @@ class OverlayService : Service() {
         handler.postDelayed({ forceShow = false; updateVisibility() }, 5000)
     }
 
-    /** 사이드바: 왼쪽으로 밀면 패널 열기 (탭은 무시) */
+    /**
+     * 사이드바 터치
+     * - 왼쪽으로 밀기 → 패널 열기
+     * - 그 외(탭, 위아래 스와이프) → 같은 터치를 밑에 있는 앱에 그대로 다시 넣어줌
+     */
     private inner class SwipeTouch : View.OnTouchListener {
         private val slop = ViewConfiguration.get(this@OverlayService).scaledTouchSlop
         private var downX = 0f
+        private var downY = 0f
+        private var downT = 0L
         private var fired = false
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.rawX; fired = false }
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY; downT = e.eventTime; fired = false
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
-                    // 끌려 나오는 느낌
-                    barView?.translationX = dx.coerceIn(-dp(16).toFloat(), 0f)
-                    if (!fired && dx < -slop * 2) {
+                    val dy = e.rawY - downY
+                    if (!fired && dx < -slop * 2 && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
                         fired = true
+                        barView?.animate()?.translationX(-dp(10).toFloat())?.setDuration(120)
+                            ?.withEndAction { barView?.animate()?.translationX(0f)?.setDuration(200)?.start() }
+                            ?.start()
                         openPanel(v)
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    barView?.animate()?.translationX(0f)?.setDuration(200)?.start()
+                MotionEvent.ACTION_UP -> {
+                    if (!fired) passThrough(downX, downY, e.rawX, e.rawY, e.eventTime - downT)
                 }
             }
             return true
+        }
+    }
+
+    /** 잠깐 터치를 통과시키고 같은 동작을 다시 넣은 뒤 원래대로 */
+    private fun passThrough(x1: Float, y1: Float, x2: Float, y2: Float, dur: Long) {
+        val root = barRoot ?: return
+        val lp = barLp ?: return
+        val bwm = barWm ?: return
+        val f = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        lp.flags = lp.flags or f
+        runCatching { bwm.updateViewLayout(root, lp) }
+        val restore = {
+            handler.postDelayed({
+                lp.flags = lp.flags and f.inv()
+                runCatching { if (barRoot === root) bwm.updateViewLayout(root, lp) }
+            }, 60)
+            Unit
+        }
+        // 창 플래그가 반영될 시간을 조금 준 뒤 다시 넣기
+        handler.postDelayed({
+            val a11y = A11yService.instance
+            val ok = a11y?.replay(x1, y1, x2, y2, dur, restore) ?: false
+            if (!ok) {
+                // 접근성 없으면 루트로
+                Thread {
+                    val moved = kotlin.math.hypot(x2 - x1, y2 - y1) > slopPx()
+                    val cmd = if (moved) "input swipe ${x1.toInt()} ${y1.toInt()} ${x2.toInt()} ${y2.toInt()} ${dur.coerceIn(40, 1500)}"
+                              else "input tap ${x1.toInt()} ${y1.toInt()}"
+                    runCatching { Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor() }
+                    handler.post { restore() }
+                }.start()
+            }
+        }, 30)
+    }
+
+    private fun slopPx() = ViewConfiguration.get(this).scaledTouchSlop
+
+    // ───────── 배경 밝기에 맞춰 바 명암 바꾸기 ─────────
+    private var barDark: Boolean? = null
+    private val sampler = object : Runnable {
+        override fun run() {
+            if (shown) sampleBackground()
+            handler.postDelayed(this, 1500)
+        }
+    }
+
+    private fun sampleBackground() {
+        val a11y = A11yService.instance ?: return
+        val lp = barLp ?: return
+        val (w, _) = screenSize()
+        // 바 바로 왼쪽 배경 영역
+        val area = Rect(w - dp(44), lp.y, w - dp(16), lp.y + lp.height)
+        a11y.sampleLuminance(area) { lum -> lum?.let { applyBarTone(it > 0.55f) } }
+    }
+
+    /** 밝은 배경 → 진한 바, 어두운 배경 → 밝은 바 (부드럽게 전환) */
+    private fun applyBarTone(dark: Boolean) {
+        if (dark == barDark) return
+        barDark = dark
+        val bg = barView?.background as? GradientDrawable ?: return
+        val from = if (dark) Color.rgb(225, 225, 225) else Color.rgb(60, 60, 60)
+        val to = if (dark) Color.rgb(60, 60, 60) else Color.rgb(225, 225, 225)
+        val strokeTo = if (dark) Color.argb(140, 255, 255, 255) else Color.argb(120, 0, 0, 0)
+        bg.setStroke(dp(1), strokeTo)
+        android.animation.ValueAnimator.ofArgb(from, to).apply {
+            duration = 300
+            addUpdateListener { bg.setColor(it.animatedValue as Int) }
+            start()
         }
     }
 
