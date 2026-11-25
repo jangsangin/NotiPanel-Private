@@ -34,6 +34,15 @@ class NotiGroup(val pkg: String, val items: List<StatusBarNotification>) {
 }
 
 /**
+ * 목록의 한 줄.
+ * SUMMARY: 묶음을 카드 한 장으로 (두 줄 요약) / HEADER: 묶음을 펼쳤을 때 앱 이름 줄 / SINGLE: 알림 한 개
+ * g: 이 줄이 대표하는 알림들 (밀어서 지울 때 함께 지워짐)
+ */
+class Row(val kind: Int, val g: NotiGroup, val key: String) {
+    companion object { const val SUMMARY = 0; const val HEADER = 1; const val SINGLE = 2 }
+}
+
+/**
  * 맨 위 묶음은 내용이 다 보이게 펼치고(사진·버튼·답장),
  * 나머지는 두 줄짜리 카드로 접어서 보여준다.
  */
@@ -43,12 +52,14 @@ class NotiAdapter(
     private val onAction: (Notification.Action) -> Unit,
     private val onReply: (Notification.Action, CharSequence) -> Unit,
     private val onReplyOpen: (Boolean, View?) -> Unit = { _, _ -> },
-    private val onToggle: (List<Int>) -> Unit = {}
+    private val onToggle: (List<Int>) -> Unit = {},
+    private val onStructure: (() -> Unit) -> Unit = { it() }
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
         private const val TYPE_EXPANDED = 0
         private const val TYPE_COLLAPSED = 1
+        private const val TYPE_HEADER = 2
 
         fun group(list: List<StatusBarNotification>): List<NotiGroup> =
             list.groupBy { it.packageName }
@@ -56,18 +67,52 @@ class NotiAdapter(
                 .sortedByDescending { it.latest.postTime }
     }
 
-    var groups: List<NotiGroup> = emptyList()
+    /** 원본 묶음들 */
+    private var sourceGroups: List<NotiGroup> = emptyList()
+    /** 화면에 보이는 줄들 */
+    var rows: List<Row> = emptyList()
         private set
+    /** 줄마다 대표하는 알림들 (패널 쪽에서 쓰는 이름 그대로 유지) */
+    val groups: List<NotiGroup> get() = rows.map { it.g }
+
+    /** 눌러서 카드별로 갈라 펼친 묶음 (앱 패키지) */
+    val splitPkgs = HashSet<String>()
+    val hasSplit get() = rows.any { it.kind == Row.HEADER }
 
     private val appNames = HashMap<String, String>()
 
-    /** 화살표로 바꾼 카드별 펼침 상태 (기본: 모두 접힘, 화살표로 펼침) */
+    /** 화살표로 바꾼 카드별 펼침 상태 (기본: 모두 접힘) */
     val expandOverride = HashMap<String, Boolean>()
 
     fun isExpanded(pos: Int): Boolean {
-        val g = groups.getOrNull(pos) ?: return false
-        return expandOverride[g.pkg] ?: false
+        val r = rows.getOrNull(pos) ?: return false
+        if (r.kind != Row.SINGLE) return false
+        return expandOverride[r.key] ?: false
     }
+
+    private fun buildRows(src: List<NotiGroup>): List<Row> {
+        val out = ArrayList<Row>()
+        for (g in src) {
+            if (g.items.size >= 2 && g.pkg in splitPkgs) {
+                out += Row(Row.HEADER, g, "H:${g.pkg}")
+                g.items.forEach { out += Row(Row.SINGLE, NotiGroup(g.pkg, listOf(it)), "N:${it.key}") }
+            } else if (g.items.size >= 2) {
+                out += Row(Row.SUMMARY, g, "S:${g.pkg}")
+            } else {
+                out += Row(Row.SINGLE, g, "N:${g.latest.key}")
+            }
+        }
+        return out
+    }
+
+    /** 묶음 펼치기/합치기 (패널이 애니메이션과 함께 처리) */
+    fun setSplit(pkg: String, split: Boolean) {
+        onStructure {
+            if (split) splitPkgs += pkg else splitPkgs -= pkg
+            submitRows(buildRows(sourceGroups))
+        }
+    }
+
     private val appIcons = HashMap<String, Drawable?>()
     private val density = ctx.resources.displayMetrics.density
     private val cardDark = Prefs.cardDark(ctx)
@@ -97,23 +142,24 @@ class NotiAdapter(
 
     /** 바뀐 카드만 골라서 갱신 (전체 다시 그리기 X → 끊김 방지) */
     fun submit(list: List<NotiGroup>) {
-        val old = groups
-        groups = list
+        sourceGroups = list
+        // 사라진 묶음은 펼침 상태도 정리
+        splitPkgs.retainAll(list.filter { it.items.size >= 2 }.map { it.pkg }.toSet())
+        submitRows(buildRows(list))
+    }
+
+    private fun submitRows(list: List<Row>) {
+        val old = rows
+        rows = list
         if (old.isEmpty() || list.isEmpty()) { notifyDataSetChanged(); return }
         val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object :
             androidx.recyclerview.widget.DiffUtil.Callback() {
             override fun getOldListSize() = old.size
             override fun getNewListSize() = list.size
-            override fun areItemsTheSame(o: Int, n: Int) = old[o].pkg == list[n].pkg
-            override fun areContentsTheSame(o: Int, n: Int) =
-                o == n && sig(old[o]) == sig(list[n])     // 위치가 바뀌면(펼침↔접힘) 다시 그림
+            override fun areItemsTheSame(o: Int, n: Int) = old[o].key == list[n].key
+            override fun areContentsTheSame(o: Int, n: Int) = sig(old[o].g) == sig(list[n].g)
         }, true)
         diff.dispatchUpdatesTo(this)
-        // 맨 위(펼친 카드)가 바뀌었으면 0, 1번 모양 다시 맞추기
-        if (old.first().pkg != list.first().pkg) {
-            notifyItemChanged(0)
-            if (list.size > 1) notifyItemChanged(1)
-        }
     }
 
     private fun sig(g: NotiGroup) = g.items.joinToString(",") {
@@ -123,18 +169,27 @@ class NotiAdapter(
 
     /** 스와이프로 지운 묶음을 바로 목록에서 빼기 (알림 서버 응답 기다리지 않음) */
     fun removeAt(pos: Int) {
-        if (pos !in groups.indices) return
-        groups = groups.toMutableList().also { it.removeAt(pos) }
-        notifyItemRemoved(pos)
-        if (pos == 0 && groups.isNotEmpty()) notifyItemChanged(0)
+        val r = rows.getOrNull(pos) ?: return
+        val gone = r.g.items.map { it.key }.toSet()
+        // 원본에서도 빼고 다시 구성 (묶음 제목만 남거나 1개만 남으면 알아서 정리)
+        sourceGroups = sourceGroups.mapNotNull { g ->
+            val left = g.items.filter { it.key !in gone }
+            if (left.isEmpty()) null else NotiGroup(g.pkg, left)
+        }
+        submitRows(buildRows(sourceGroups))
     }
 
-    override fun getItemCount() = groups.size
-    override fun getItemId(position: Int) = groups[position].pkg.hashCode().toLong()
-    override fun getItemViewType(position: Int) = if (isExpanded(position)) TYPE_EXPANDED else TYPE_COLLAPSED
+    override fun getItemCount() = rows.size
+    override fun getItemId(position: Int) = rows[position].key.hashCode().toLong()
+    override fun getItemViewType(position: Int) = when {
+        rows[position].kind == Row.HEADER -> TYPE_HEADER
+        isExpanded(position) -> TYPE_EXPANDED
+        else -> TYPE_COLLAPSED
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inf = LayoutInflater.from(ctx)
+        if (viewType == TYPE_HEADER) return HeaderVH(inf.inflate(R.layout.item_header, parent, false))
         return if (viewType == TYPE_EXPANDED)
             ExpandedVH(inf.inflate(R.layout.item_expanded, parent, false))
         else
@@ -144,8 +199,27 @@ class NotiAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val g = groups[position]
         when (holder) {
+            is HeaderVH -> holder.bind(rows[position])
             is ExpandedVH -> holder.bind(g)
             is CollapsedVH -> holder.bind(g)
+        }
+    }
+
+    /** 묶음을 펼쳤을 때 맨 위 앱 이름 줄: 누르면 다시 카드 한 장으로 합침 */
+    inner class HeaderVH(v: View) : RecyclerView.ViewHolder(v) {
+        private val title: TextView = v.findViewById(R.id.headerTitle)
+        private val btn: View = v.findViewById(R.id.headerBtn)
+        fun bind(r: Row) {
+            title.text = appName(r.g.pkg)
+            btn.rotation = 180f
+            val collapse = View.OnClickListener {
+                btn.animate().rotation(0f).setDuration(180).start()
+                // 펼쳐 둔 알림들의 펼침 상태도 정리
+                r.g.items.forEach { expandOverride.remove("N:${it.key}") }
+                btn.postDelayed({ setSplit(r.g.pkg, false) }, 100)
+            }
+            btn.setOnClickListener(collapse)
+            itemView.setOnClickListener(collapse)
         }
     }
 
@@ -296,25 +370,40 @@ class NotiAdapter(
     }
 
     // ───────── 묶음 펼치기 (화살표) ─────────
-    /** 오른쪽 위 화살표: ⌄ 누르면 그 카드 펼침, ⌃ 누르면 접힘 */
+    /**
+     * 오른쪽 위 화살표
+     * - 묶음 카드(여러 알림): 누르면 알림마다 카드로 갈라져 펼쳐짐
+     * - 알림 카드: ⌄ 누르면 내용 펼침, ⌃ 누르면 접힘 (한 번에 하나만 펼침)
+     */
     private fun setupExpand(holder: RecyclerView.ViewHolder, g: NotiGroup) {
         val btn: ImageView = holder.itemView.findViewById(R.id.expandBtn)
         val pos0 = holder.bindingAdapterPosition
-        val isExp = pos0 != RecyclerView.NO_POSITION && isExpanded(pos0)
+        val row = rows.getOrNull(pos0)
         btn.animate().cancel()
+        if (row?.kind == Row.SUMMARY) {
+            btn.rotation = 0f
+            val split = View.OnClickListener {
+                btn.animate().rotation(180f).setDuration(180).start()
+                btn.postDelayed({ setSplit(g.pkg, true) }, 100)
+            }
+            btn.setOnClickListener(split)
+            holder.itemView.setOnClickListener(split)   // 묶음 카드는 눌러도 펼쳐짐
+            return
+        }
+        val isExp = pos0 != RecyclerView.NO_POSITION && isExpanded(pos0)
         btn.rotation = if (isExp) 180f else 0f
         btn.setOnClickListener {
             val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+            val r = rows.getOrNull(pos) ?: return@setOnClickListener
             val next = !isExpanded(pos)
             val changed = mutableListOf(pos)
             if (next) {
                 // 한 번에 하나만 펼침: 다른 펼친 카드는 접기
-                groups.forEachIndexed { i, other ->
-                    if (i != pos && isExpanded(i)) { expandOverride[other.pkg] = false; changed += i }
+                rows.forEachIndexed { i, other ->
+                    if (i != pos && isExpanded(i)) { expandOverride[other.key] = false; changed += i }
                 }
             }
-            expandOverride[g.pkg] = next
+            expandOverride[r.key] = next
             btn.animate().rotation(if (next) 180f else 0f).setDuration(180).start()
             btn.postDelayed({ onToggle(changed) }, 120)
         }
@@ -511,8 +600,8 @@ class NotiAdapter(
             line2.visibility = if (line2.text.isNullOrEmpty()) View.GONE else View.VISIBLE
             // 접힌 카드는 두 줄만 (답장·읽음 버튼은 화살표로 펼치면 나옴)
             replyBox.hide()
-            setupExpand(this, g)
             itemView.setOnClickListener { onOpen(sbn) }
+            setupExpand(this, g)
         }
 
         private fun summary(s: StatusBarNotification): CharSequence {

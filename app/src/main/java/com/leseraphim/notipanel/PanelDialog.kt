@@ -136,6 +136,18 @@ class PanelDialog(
         return (dp(12) + (cardH + gap) * 3 + list.paddingBottom).coerceAtMost(maxHeight())
     }
 
+    /** 지금 목록 전체가 들어가는 높이 (묶음을 펼쳤을 때 패널을 그만큼 키움) */
+    private fun allRowsHeight(): Int {
+        var sum = 0
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            if (list.getChildAdapterPosition(c) == RecyclerView.NO_POSITION) continue
+            val lp = c.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+            sum += c.height + (lp?.topMargin ?: 0) + (lp?.bottomMargin ?: 0)
+        }
+        return dp(12) + sum + list.paddingBottom
+    }
+
     /** 맨 위 카드 3장(펼친 카드 포함)이 전부 들어가는 높이 */
     private fun firstThreeHeight(): Int? {
         val gap = dp(10)
@@ -429,7 +441,8 @@ class PanelDialog(
         // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
         // 3개 이상: 기본은 접힌 카드 3장 높이, 위 3장 중 펼친 게 있으면 그만큼 위로 커짐
         val h = if (adapter.itemCount >= 3)
-            maxOf(threeCardHeight(), firstThreeHeight() ?: 0).coerceAtMost(maxHeight())
+            maxOf(threeCardHeight(), firstThreeHeight() ?: 0,
+                if (adapter.hasSplit) allRowsHeight() else 0).coerceAtMost(maxHeight())
         else need.coerceIn(dp(180), maxHeight())
         val curH = window?.attributes?.height ?: (bottom - top)
         val curY = window?.attributes?.y ?: top
@@ -554,6 +567,8 @@ class PanelDialog(
             onAction = { a -> sendPending(a.actionIntent) },   // 읽음 등: 패널 유지
             onReply = { a, text -> sendReply(a, text) },
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
+            // 묶음을 카드별로 펼치거나 합칠 때: 카드가 미끄러지며 갈라지고 패널도 같이 커지거나 줄어듦
+            onStructure = { change -> animateChange(allowShrink = true) { change() } },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
             onToggle = { changed ->
                 val apply = {
