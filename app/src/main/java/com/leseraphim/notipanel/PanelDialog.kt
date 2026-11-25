@@ -671,14 +671,17 @@ class PanelDialog(
                 c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
                 c.translationZ = -d
                 stackedBehind = d >= 0.5f
-                if (stackedBehind) c.alpha *= 0.8f
+                // 뒤로 들어갈수록 카드 속 글씨·아이콘을 지움 → 앞 카드 너머로 비치지 않고 유리판 테두리만
+                setContentAlpha(c, (1f - d).coerceIn(0f, 1f))
             } else if (c.top < 0) {
+                setContentAlpha(c, 1f)
                 val p = (-c.top / h).coerceIn(0f, 1f)
                 c.translationY = 0f
                 c.scaleX = 1f - 0.06f * p; c.scaleY = c.scaleX
                 c.alpha = 1f - p
                 c.translationZ = 0f
             } else {
+                setContentAlpha(c, 1f)
                 c.translationY = 0f
                 c.scaleX = 1f; c.scaleY = 1f
                 c.alpha = 1f
@@ -797,6 +800,15 @@ class PanelDialog(
                 }
             }
         })
+    }
+
+    /** 카드 배경(유리판)은 두고 안쪽 내용만 투명도 조절 */
+    private fun setContentAlpha(c: View, a: Float) {
+        val g = c as? android.view.ViewGroup ?: return
+        for (i in 0 until g.childCount) {
+            val v = g.getChildAt(i)
+            if (v.alpha != a) v.alpha = a
+        }
     }
 
     /** 카드 블러 (값이 바뀔 때만 다시 설정해서 부담 줄임) */

@@ -294,7 +294,9 @@ class OverlayService : Service() {
     /** 홈이 아니면 보이기, 홈이면 숨기기 */
     private fun updateVisibility(animate: Boolean = true) {
         val noDetect = A11yService.instance == null && rootWatcher?.rootOk == false
-        if (locked) {
+        // 잠금화면이거나 상단 알림창이 내려와 있으면 바로 숨김 (패널도 닫음)
+        if (locked || A11yService.shadeOpen) {
+            if (panel != null) { lastCloseReason = if (locked) "잠금화면" else "상단 알림창 열림" }
             panel?.dismissNow(); panel = null
             setShown(false, animate = false)
             return

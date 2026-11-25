@@ -45,6 +45,10 @@ class A11yService : AccessibilityService() {
 
         private val listeners = mutableSetOf<(Boolean) -> Unit>()
 
+        /** 상단 알림창/빠른 설정이 내려와 있는지 */
+        var shadeOpen = false
+            private set
+
         /** 앞 화면 앱이 바뀔 때 (상태 알림 갱신용) */
         var pkgListener: (() -> Unit)? = null
 
@@ -105,6 +109,13 @@ class A11yService : AccessibilityService() {
 
         // 1순위: 실제 화면에 떠 있는 맨 위 '앱' 창의 패키지
         // 2순위: 이벤트를 보낸 패키지
+        // 상단 알림창이 내려왔는지 먼저 확인 (알림창은 시스템UI라 아래에서 걸러지므로)
+        val shade = isShadeOpen()
+        if (shade != shadeOpen) {
+            shadeOpen = shade
+            listeners.toList().forEach { it(onHome) }
+        }
+
         val pkg = topAppPackage() ?: e.packageName?.toString() ?: return
         if (pkg == packageName || pkg in ignore) return
         if (isIme(pkg)) return
@@ -119,6 +130,18 @@ class A11yService : AccessibilityService() {
             listeners.toList().forEach { it(home) }
         }
     }
+
+    /** 시스템UI 창이 화면 절반 이상을 덮고 있으면 알림창/빠른 설정이 내려온 것 */
+    private fun isShadeOpen(): Boolean = runCatching {
+        val h = resources.displayMetrics.heightPixels
+        val r = android.graphics.Rect()
+        windows.any { w ->
+            if (w.type != android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM) return@any false
+            w.getBoundsInScreen(r)
+            if (r.height() < h * 0.5f) return@any false
+            w.root?.packageName?.toString() == "com.android.systemui"
+        }
+    }.getOrDefault(false)
 
     /** 런처 창이 화면에 보이는지 (앱 안에 있을 땐 런처 창이 목록에 안 나옴) */
     private fun launcherVisible(): Boolean = runCatching {
