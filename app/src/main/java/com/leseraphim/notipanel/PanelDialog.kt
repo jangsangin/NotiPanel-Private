@@ -655,21 +655,23 @@ class PanelDialog(
             var stackedBehind = false
             c.pivotX = c.width / 2f
             c.pivotY = c.height.toFloat()
-            if (pos >= STACK_FROM && c.bottom > limit) {
-                val depth = ((c.bottom - limit) / h).coerceAtLeast(0.05f)
-                val dd = depth.coerceAtMost(3f)
-                // 바닥을 limit + 층간격 에 맞춤 (위로 올라가더라도 두 번째 카드 아래까지만)
-                // stackW: 맨 아래로 갈수록 0 → 원래 자리·크기로 돌아옴
-                c.translationY = ((limit + dd * step) - c.bottom) * stackW
-                c.scaleX = 1f - 0.05f * dd * stackW
+            // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기:
+            // 이 선(S)보다 아래에서 시작하는 카드는 S에 붙고, 뒤 카드는 조금씩 작아지며
+            // 세 번째 카드와의 간격 안으로 위 테두리만 살짝 보임 (최대 3장)
+            val sLine = (list.height - list.paddingBottom).toFloat()
+            val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
+            val d = (c.top - sLine) / slot
+            if (d > 0f) {
+                val dd = d.coerceAtMost(2f)
+                c.pivotX = c.width / 2f
+                c.pivotY = 0f
+                c.translationY = (sLine - dd * 4 * density) - c.top
+                c.scaleX = 1f - 0.06f * dd
                 c.scaleY = c.scaleX
-                val a0 = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
-                c.alpha = 1f + (a0 - 1f) * stackW
-                c.translationZ = -depth * stackW
-                // 앞 카드 뒤로 겹쳐 들어간 카드 → 글씨가 비치지 않게 블러 + 어둡게
-                stackedBehind = stackW > 0.3f
-                if (stackedBehind) c.alpha *= 0.75f
-                // (블러는 아래에서 X 기준 그라데이션으로)
+                c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
+                c.translationZ = -d
+                stackedBehind = d >= 0.5f
+                if (stackedBehind) c.alpha *= 0.8f
             } else if (c.top < 0) {
                 val p = (-c.top / h).coerceIn(0f, 1f)
                 c.translationY = 0f
