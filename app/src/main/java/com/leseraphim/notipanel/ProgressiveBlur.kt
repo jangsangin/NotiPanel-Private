@@ -14,27 +14,14 @@ import androidx.annotation.RequiresApi
  */
 object ProgressiveBlur {
 
-    private const val AGSL = """
+    // 블러된 그림에 위→아래로 점점 진해지는 투명도를 입히는 셰이더 (블러 자체는 기본 블러 사용)
+    private const val MASK = """
         uniform shader content;
         uniform float startY;
         uniform float endY;
-        uniform float maxR;
         half4 main(float2 p) {
-            float t = clamp((p.y - startY) / max(endY - startY, 1.0), 0.0, 1.0);
-            t = t * t * (3.0 - 2.0 * t);          // 부드러운 곡선
-            float r = maxR * t;
-            if (r < 0.75) { return content.eval(p); }
-            half4 sum = half4(0.0);
-            float total = 0.0;
-            for (int i = -3; i <= 3; i++) {
-                for (int j = -3; j <= 3; j++) {
-                    float2 o = float2(float(i), float(j)) * (r / 3.0);
-                    float w = exp(-float(i * i + j * j) / 8.0);
-                    sum += content.eval(p + o) * w;
-                    total += w;
-                }
-            }
-            return sum / total;
+            float t = smoothstep(startY, endY, p.y);
+            return content.eval(p) * t;
         }
     """
 
@@ -64,12 +51,20 @@ object ProgressiveBlur {
 
     fun clear(v: View) = apply(v, 0f, 0f, 0f)
 
+    /**
+     * 결과 = 선명한 원본 위에 (기본 블러 × 그라데이션 마스크) 를 겹침.
+     * 블러 품질은 안드로이드 기본 블러 그대로라 자연스럽고, 윗부분은 원본 그대로 선명.
+     */
     @RequiresApi(33)
     private fun make33(startY: Float, endY: Float, maxR: Float): RenderEffect {
-        val sh = RuntimeShader(AGSL)
-        sh.setFloatUniform("startY", startY)
-        sh.setFloatUniform("endY", endY)
-        sh.setFloatUniform("maxR", maxR)
-        return RenderEffect.createRuntimeShaderEffect(sh, "content")
+        val mask = RuntimeShader(MASK)
+        mask.setFloatUniform("startY", startY)
+        mask.setFloatUniform("endY", endY)
+        val blur = RenderEffect.createBlurEffect(maxR, maxR, Shader.TileMode.CLAMP)
+        val maskedBlur = RenderEffect.createChainEffect(
+            RenderEffect.createRuntimeShaderEffect(mask, "content"), blur
+        )
+        val original = RenderEffect.createOffsetEffect(0f, 0f)
+        return RenderEffect.createBlendModeEffect(original, maskedBlur, android.graphics.BlendMode.SRC_OVER)
     }
 }

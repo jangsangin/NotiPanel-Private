@@ -484,7 +484,7 @@ class PanelDialog(
                 val fade = 30 * density
                 val visBottom = c.top + ty + hh
                 if (visBottom > xTopHere - fade) {
-                    ProgressiveBlur.apply(c, local(xTopHere - fade), local(xTopHere + 6 * density), 22 * density)
+                    ProgressiveBlur.apply(c, local(xTopHere - fade), local(xTopHere + 10 * density), 14 * density)
                 } else ProgressiveBlur.clear(c)
             } else ProgressiveBlur.clear(c)
         }
