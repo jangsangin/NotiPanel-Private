@@ -14,6 +14,10 @@ object Prefs {
     const val KEY_BAR_POS = "bar_pos"     // 사이드바 세로 위치(화면 위에서 %, 중심 기준)
     const val KEY_BAR_LEN = "bar_len"     // 사이드바 길이(화면 높이 %)
     const val KEY_BAR_W = "bar_w"         // 사이드바 두께(dp)
+    const val KEY_SIDE_LEFT = "side_left"   // 사이드바를 왼쪽에
+    const val KEY_BUTTON_MODE = "button_mode" // 버튼식(떠 있는 동그란 버튼)
+    const val KEY_BTN_X = "btn_x"
+    const val KEY_BTN_Y = "btn_y"
     const val KEY_POS_X = "pos_x"
     const val KEY_POS_Y = "pos_y"
 
@@ -27,6 +31,10 @@ object Prefs {
     fun barPos(c: Context) = get(c).getInt(KEY_BAR_POS, 73)
     fun barLen(c: Context) = get(c).getInt(KEY_BAR_LEN, 10)
     fun barW(c: Context) = get(c).getInt(KEY_BAR_W, 5)
+    fun sideLeft(c: Context) = get(c).getBoolean(KEY_SIDE_LEFT, false)
+    fun buttonMode(c: Context) = get(c).getBoolean(KEY_BUTTON_MODE, false)
+    fun btnX(c: Context) = get(c).getInt(KEY_BTN_X, -1)
+    fun btnY(c: Context) = get(c).getInt(KEY_BTN_Y, -1)
     fun posX(c: Context) = get(c).getInt(KEY_POS_X, -1)
     fun posY(c: Context) = get(c).getInt(KEY_POS_Y, -1)
 }

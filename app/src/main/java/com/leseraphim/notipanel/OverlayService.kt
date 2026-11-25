@@ -58,6 +58,8 @@ class OverlayService : Service() {
     private var barRoot: FrameLayout? = null      // 터치 영역(투명, 넓음)
     private var barView: View? = null             // 눈에 보이는 회색 바
     private var barLp: WindowManager.LayoutParams? = null
+    private var isButton = false
+    private var isLeft = false
     private var shown = false
     private var forceShow = false
     private var panel: PanelDialog? = null
@@ -98,7 +100,8 @@ class OverlayService : Service() {
         when (key) {
             Prefs.KEY_OPACITY -> barView?.alpha = barAlpha()
             // 위치·크기 바꾸면 바로 다시 그리고, 홈 화면에서도 3초간 보여줘서 확인 가능
-            Prefs.KEY_BAR_POS, Prefs.KEY_BAR_LEN, Prefs.KEY_BAR_W -> {
+            Prefs.KEY_BAR_POS, Prefs.KEY_BAR_LEN, Prefs.KEY_BAR_W,
+            Prefs.KEY_SIDE_LEFT, Prefs.KEY_BUTTON_MODE -> {
                 rebuildBar()
                 previewBar()
             }
@@ -242,45 +245,77 @@ class OverlayService : Service() {
                    else WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         val ctx: Context = a11y ?: this
 
-        val (_, h) = screenSize()
-        val touchW = maxOf(dp(14), dp(Prefs.barW(this)) + dp(8))   // 실제 터치 폭 (가장자리만)
-        val barW = dp(Prefs.barW(this))                          // 보이는 바 두께 (설정)
-        val barH = (h * Prefs.barLen(this) / 100f).toInt()      // 바 길이 (설정)
-        val centerY = (h * Prefs.barPos(this) / 100f).toInt()   // 세로 위치 (설정)
+        val (w, h) = screenSize()
+        val left = Prefs.sideLeft(this)
+        val buttonMode = Prefs.buttonMode(this)
+        isButton = buttonMode
+        isLeft = left
 
         val root = FrameLayout(ctx)
-        val bar = View(ctx).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = barW / 2f
-                setColor(Color.rgb(128, 128, 128))          // 중간 회색
-                setStroke(dp(1), Color.argb(170, 255, 255, 255))
-            }
-            alpha = barAlpha()
-            elevation = dp(2).toFloat()
-        }
-        root.addView(bar, FrameLayout.LayoutParams(barW, barH, Gravity.END or Gravity.CENTER_VERTICAL)
-            .apply { marginEnd = dp(3) })
+        val bar: View
+        val lp: WindowManager.LayoutParams
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-        val lp = WindowManager.LayoutParams(
-            touchW, barH, type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 0
-            y = (centerY - barH / 2).coerceIn(0, h - barH)
+        if (buttonMode) {
+            // ── 버튼식: 떠 있는 동그란 유리 버튼 (꾹 눌러서 어디든 옮기기) ──
+            val size = dp(52)
+            bar = FrameLayout(ctx).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(150, 110, 110, 110))
+                    setStroke(dp(1), Color.argb(150, 255, 255, 255))
+                }
+                elevation = dp(4).toFloat()
+                alpha = barAlpha()
+                addView(android.widget.ImageView(ctx).apply {
+                    setImageResource(R.drawable.ic_touch)
+                    setPadding(dp(14), dp(14), dp(14), dp(14))
+                }, FrameLayout.LayoutParams(-1, -1))
+            }
+            root.addView(bar, FrameLayout.LayoutParams(size, size))
+            val bx = Prefs.btnX(this).takeIf { it >= 0 } ?: (w - size - dp(16))
+            val by = Prefs.btnY(this).takeIf { it >= 0 } ?: ((h * 0.6f).toInt())
+            lp = WindowManager.LayoutParams(size, size, type, flags, PixelFormat.TRANSLUCENT).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = bx.coerceIn(0, w - size)
+                y = by.coerceIn(0, h - size)
+            }
+            root.setOnTouchListener(ButtonTouch())
+        } else {
+            // ── 사이드바식: 화면 가장자리 얇은 막대 (왼쪽/오른쪽) ──
+            val touchW = maxOf(dp(14), dp(Prefs.barW(this)) + dp(8))   // 실제 터치 폭 (가장자리만)
+            val barW = dp(Prefs.barW(this))                          // 보이는 바 두께 (설정)
+            val barH = (h * Prefs.barLen(this) / 100f).toInt()      // 바 길이 (설정)
+            val centerY = (h * Prefs.barPos(this) / 100f).toInt()   // 세로 위치 (설정)
+            bar = View(ctx).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = barW / 2f
+                    setColor(Color.rgb(128, 128, 128))          // 중간 회색
+                    setStroke(dp(1), Color.argb(170, 255, 255, 255))
+                }
+                alpha = barAlpha()
+                elevation = dp(2).toFloat()
+            }
+            val side = if (left) Gravity.START else Gravity.END
+            root.addView(bar, FrameLayout.LayoutParams(barW, barH, side or Gravity.CENTER_VERTICAL)
+                .apply { if (left) marginStart = dp(3) else marginEnd = dp(3) })
+            lp = WindowManager.LayoutParams(touchW, barH, type, flags, PixelFormat.TRANSLUCENT).apply {
+                gravity = Gravity.TOP or side
+                x = 0
+                y = (centerY - barH / 2).coerceIn(0, h - barH)
+            }
+            root.setOnTouchListener(SwipeTouch())
         }
 
         // 바 영역은 시스템 뒤로가기 제스처에서 제외
-        root.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+        if (!buttonMode) root.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
             if (Build.VERSION.SDK_INT >= 29) {
                 v.systemGestureExclusionRects = listOf(Rect(0, 0, v.width, v.height))
             }
         }
-        root.setOnTouchListener(SwipeTouch())
         root.visibility = View.GONE
 
         runCatching { bwm.addView(root, lp) }.onFailure {
@@ -320,15 +355,19 @@ class OverlayService : Service() {
         shown = show
         refreshStatus()
         bar.animate().cancel()
-        val off = dp(14).toFloat()
+        val off = if (isLeft) -dp(14).toFloat() else dp(14).toFloat()
         if (show) {
             root.visibility = View.VISIBLE
-            handler.postDelayed({ sampleBackground() }, 350)
-            if (animate) {
+            if (!isButton) handler.postDelayed({ sampleBackground() }, 350)
+            if (animate && isButton) {
+                bar.scaleX = 0.6f; bar.scaleY = 0.6f; bar.alpha = 0f
+                bar.animate().scaleX(1f).scaleY(1f).alpha(barAlpha()).setDuration(220)
+                    .setInterpolator(PathInterpolator(0.2f, 0f, 0f, 1f)).start()
+            } else if (animate) {
                 bar.translationX = off
                 bar.animate().translationX(0f).setDuration(260)
                     .setInterpolator(PathInterpolator(0.2f, 0f, 0f, 1f)).start()
-            } else bar.translationX = 0f
+            } else { bar.translationX = 0f; bar.scaleX = 1f; bar.scaleY = 1f; bar.alpha = barAlpha() }
         } else {
             if (animate) {
                 bar.animate().translationX(off).setDuration(180)
@@ -373,9 +412,11 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
                     val dy = e.rawY - downY
-                    if (!fired && dx < -slop * 2 && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                    val inward = if (isLeft) dx > slop * 2 else dx < -slop * 2
+                    if (!fired && inward && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
                         fired = true
-                        barView?.animate()?.translationX(-dp(10).toFloat())?.setDuration(120)
+                        val nudge = if (isLeft) dp(10).toFloat() else -dp(10).toFloat()
+                        barView?.animate()?.translationX(nudge)?.setDuration(120)
                             ?.withEndAction { barView?.animate()?.translationX(0f)?.setDuration(200)?.start() }
                             ?.start()
                         openPanel(v)
@@ -383,6 +424,63 @@ class OverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!fired) passThrough(downX, downY, e.rawX, e.rawY, e.eventTime - downT)
+                }
+            }
+            return true
+        }
+    }
+
+    /** 버튼식: 톡 누르면 패널, 꾹 누른 채 끌면 화면 어디든 이동 (손 떼면 그 자리 저장) */
+    private inner class ButtonTouch : View.OnTouchListener {
+        private val slop = ViewConfiguration.get(this@OverlayService).scaledTouchSlop
+        private val longMs = ViewConfiguration.getLongPressTimeout().toLong()
+        private var downX = 0f
+        private var downY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var dragging = false
+        private var moved = false
+        private val startDrag = Runnable {
+            dragging = true
+            barView?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            barView?.animate()?.scaleX(1.15f)?.scaleY(1.15f)?.setDuration(120)?.start()
+        }
+
+        override fun onTouch(v: View, e: MotionEvent): Boolean {
+            val lp = barLp ?: return true
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY
+                    startX = lp.x; startY = lp.y
+                    dragging = false; moved = false
+                    barView?.animate()?.scaleX(0.92f)?.scaleY(0.92f)?.setDuration(80)?.start()
+                    handler.postDelayed(startDrag, longMs)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX
+                    val dy = e.rawY - downY
+                    if (!dragging && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
+                        // 길게 누르기 전에 움직이면 이동 아님
+                        moved = true
+                        handler.removeCallbacks(startDrag)
+                    }
+                    if (dragging) {
+                        val (w, h) = screenSize()
+                        lp.x = (startX + dx).toInt().coerceIn(0, w - lp.width)
+                        lp.y = (startY + dy).toInt().coerceIn(0, h - lp.height)
+                        runCatching { barWm?.updateViewLayout(v, lp) }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(startDrag)
+                    barView?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(150)?.start()
+                    if (dragging) {
+                        Prefs.get(this@OverlayService).edit()
+                            .putInt(Prefs.KEY_BTN_X, lp.x).putInt(Prefs.KEY_BTN_Y, lp.y).apply()
+                    } else if (!moved && e.actionMasked == MotionEvent.ACTION_UP) {
+                        openPanel(v)
+                    }
+                    dragging = false
                 }
             }
             return true
@@ -432,11 +530,13 @@ class OverlayService : Service() {
     }
 
     private fun sampleBackground() {
+        if (isButton) return
         val a11y = A11yService.instance ?: return
         val lp = barLp ?: return
         val (w, _) = screenSize()
         // 바 바로 왼쪽 배경 영역
-        val area = Rect(w - dp(44), lp.y, w - dp(16), lp.y + lp.height)
+        val area = if (isLeft) Rect(dp(16), lp.y, dp(44), lp.y + lp.height)
+                   else Rect(w - dp(44), lp.y, w - dp(16), lp.y + lp.height)
         a11y.sampleLuminance(area) { lum -> lum?.let { applyBarTone(it > 0.55f) } }
     }
 
@@ -462,10 +562,11 @@ class OverlayService : Service() {
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
         val anchorY = loc[1] + from.height / 2
+        val anchorX = loc[0] + from.width / 2
         val (_, sh) = screenSize()
         val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
         val host: Context = A11yService.instance ?: this
-        panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this)).also {
+        panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this), anchorX).also {
             it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
             it.showAnimated()
         }

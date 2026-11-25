@@ -37,7 +37,8 @@ class PanelDialog(
     private val ctx: Context,
     private val anchorY: Int,      // 사이드바 중앙 높이 (펼쳐지는 기준점)
     private val barBottom: Int,    // 패널 아래 끝 위치 (고정)
-    private val blurRadius: Int
+    private val blurRadius: Int,
+    private val anchorX: Int = -1      // 펼쳐지는 기준 가로 위치 (사이드바/버튼)
 ) : Dialog(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar) {
 
     private val density = ctx.resources.displayMetrics.density
@@ -116,6 +117,11 @@ class PanelDialog(
     }
 
     /** 기본(최대) 패널 높이: 화면의 61.6% (예전 56%에서 10% 키움) */
+    /** 사이드바/버튼 쪽에서 펼쳐지도록 기준 가로 위치 (기본: 오른쪽 끝) */
+    private fun pivotXFor(): Float =
+        if (anchorX < 0) (right - left).toFloat()
+        else (anchorX - left).toFloat().coerceIn(0f, (right - left).toFloat())
+
     private fun maxHeight() = (screenH * 0.616f).toInt()
 
     private fun setupWindow() {
@@ -358,7 +364,7 @@ class PanelDialog(
         val d = window?.decorView ?: return
         val h = bottom - top
         // 사이드바 쪽(오른쪽, 사이드바 높이)에서 왼쪽 위로 펼쳐짐
-        d.pivotX = (right - left).toFloat()
+        d.pivotX = pivotXFor()
         d.pivotY = (anchorY - top).toFloat().coerceIn(0f, h.toFloat())
         d.scaleX = 0.2f; d.scaleY = 0.2f; d.alpha = 0f
         d.animate().scaleX(1f).scaleY(1f).alpha(1f)
@@ -393,7 +399,7 @@ class PanelDialog(
         d.animate().cancel()
         // 열릴 때의 반대: 사이드바 쪽(오른쪽 아래)으로 접히며 사라짐
         val h = (window?.attributes?.height ?: (bottom - top)).toFloat()
-        d.pivotX = (right - left).toFloat()
+        d.pivotX = pivotXFor()
         d.pivotY = (anchorY - (window?.attributes?.y ?: top)).toFloat().coerceIn(0f, h)
         d.animate().scaleX(0.2f).scaleY(0.2f).alpha(0f)
             .setDuration(340).setInterpolator(PathInterpolator(0.4f, 0f, 0.8f, 0.4f))

@@ -85,6 +85,29 @@ class SettingsActivity : AppCompatActivity() {
             if (checked) OverlayService.start(this) else OverlayService.stop(this)
         }
 
+        // 모양: 사이드바식 / 버튼식, 사이드바 좌우
+        val grp = findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.grpMode)
+        val swLeft = findViewById<MaterialSwitch>(R.id.swLeft)
+        val modeInfo = findViewById<TextView>(R.id.modeInfo)
+        fun showModeInfo(button: Boolean) {
+            modeInfo.text = if (button) "버튼식: 톡 누르면 패널, 꾹 누른 채 끌면 화면 어디든 옮길 수 있어요"
+                            else "사이드바식: 화면 가장자리 막대를 안쪽으로 밀면 패널이 열려요"
+            swLeft.isEnabled = !button
+        }
+        val isBtn = Prefs.buttonMode(this)
+        grp.check(if (isBtn) R.id.btnModeButton else R.id.btnModeBar)
+        showModeInfo(isBtn)
+        grp.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            val b = id == R.id.btnModeButton
+            Prefs.get(this).edit().putBoolean(Prefs.KEY_BUTTON_MODE, b).apply()
+            showModeInfo(b)
+        }
+        swLeft.isChecked = Prefs.sideLeft(this)
+        swLeft.setOnCheckedChangeListener { _, c ->
+            Prefs.get(this).edit().putBoolean(Prefs.KEY_SIDE_LEFT, c).apply()
+        }
+
         bindSlider(R.id.slOpacity, R.id.lblOpacity, Prefs.KEY_OPACITY, Prefs.opacity(this)) {
             "사이드바 진하기: $it%"
         }
