@@ -66,6 +66,34 @@ class OverlayService : Service() {
 
     private val homeListener: (Boolean) -> Unit = { updateVisibility() }
 
+    // ───────── 잠금화면 ─────────
+    private var locked = false
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            when (i.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    // 화면 꺼지면 패널은 애니메이션 없이 즉시 닫고, 사이드바도 즉시 숨김
+                    locked = true
+                    panel?.dismissNow()
+                    panel = null
+                    updateVisibility(animate = false)
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    locked = isKeyguardLocked()
+                    updateVisibility(animate = false)
+                }
+                Intent.ACTION_USER_PRESENT -> {
+                    // 잠금 해제: 패널은 닫힌 상태 유지, 사이드바만 상황에 맞게
+                    locked = false
+                    updateVisibility()
+                }
+            }
+        }
+    }
+
+    private fun isKeyguardLocked() =
+        getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
+
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             Prefs.KEY_OPACITY -> barView?.alpha = barAlpha()
@@ -85,6 +113,12 @@ class OverlayService : Service() {
         wm = getSystemService(WindowManager::class.java)
         startAsForeground()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
+        locked = isKeyguardLocked()
+        registerReceiver(screenReceiver, android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        })
         A11yService.addListener(homeListener)
         A11yService.onConnectionChanged = { rebuildBar(); updateWatcher() }
         A11yService.pkgListener = { refreshStatus() }
@@ -105,6 +139,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         instance = null
         A11yService.removeListener(homeListener)
+        runCatching { unregisterReceiver(screenReceiver) }
         A11yService.onConnectionChanged = null
         A11yService.pkgListener = null
         rootWatcher?.stop()
@@ -257,11 +292,21 @@ class OverlayService : Service() {
     /** 홈이 아니면 보이기, 홈이면 숨기기 */
     private fun updateVisibility(animate: Boolean = true) {
         val noDetect = A11yService.instance == null && rootWatcher?.rootOk == false
+        if (locked) {
+            panel?.dismissNow(); panel = null
+            setShown(false, animate = false)
+            return
+        }
         val want = forceShow || noDetect || !A11yService.onHome
         // 답장 입력 중에는 화면 감지가 흔들려도 패널 유지
-        if (!want && panel?.replying != true) panel?.closeAnimated("홈 화면 감지")
+        if (!want && panel?.replying != true && panel != null) {
+            // 홈으로 가면 패널도 바로 사라짐
+            lastCloseReason = "홈 화면 감지"
+            panel?.dismissNow(); panel = null
+        }
         if (!want && panel?.replying == true) return
-        setShown(want, animate)
+        // 숨길 때(홈으로 갈 때)는 애니메이션 없이 바로
+        setShown(want, animate && want)
     }
 
     private fun setShown(show: Boolean, animate: Boolean) {
