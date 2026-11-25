@@ -337,13 +337,11 @@ class OverlayService : Service() {
             return
         }
         val want = forceShow || noDetect || !A11yService.onHome
-        // 답장 입력 중에는 화면 감지가 흔들려도 패널 유지
-        if (!want && panel?.replying != true && panel != null) {
-            // 홈으로 가면 패널도 바로 사라짐
+        // 홈으로 가면 패널도 바로 사라짐 (답장 중이어도 키보드와 함께 닫음)
+        if (!want && panel != null) {
             lastCloseReason = "홈 화면 감지"
             panel?.dismissNow(); panel = null
         }
-        if (!want && panel?.replying == true) return
         // 숨길 때(홈으로 갈 때)는 애니메이션 없이 바로
         setShown(want, animate && want)
     }

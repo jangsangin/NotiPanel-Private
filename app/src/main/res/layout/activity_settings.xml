@@ -178,6 +178,14 @@
             android:valueFrom="2"
             android:valueTo="14" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swStack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="아래 알림 겹치기 효과"
+            android:textSize="16sp" />
+
         <TextView
             android:id="@+id/lblCard"
             android:layout_width="wrap_content"

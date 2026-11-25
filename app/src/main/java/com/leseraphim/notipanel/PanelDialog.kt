@@ -55,6 +55,7 @@ class PanelDialog(
     private lateinit var emptyView: TextView
     private lateinit var focusSink: View
     private val useShot: Boolean
+    private val stackOn = Prefs.stackOn(ctx)
     private var shotView: android.widget.ImageView? = null
 
     private var closing = false
@@ -467,6 +468,12 @@ class PanelDialog(
 
     fun dismissNow() {
         blurAnim?.cancel()
+        posAnim?.cancel()
+        keyboardWatch = false
+        runCatching {   // 답장 중이었으면 키보드도 같이 내림
+            val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            window?.decorView?.let { imm.hideSoftInputFromWindow(it.windowToken, 0) }
+        }
         main.removeCallbacksAndMessages(null)
         if (isShowing) runCatching { dismiss() }
     }
@@ -762,7 +769,8 @@ class PanelDialog(
             val sLine = (list.height - list.paddingBottom).toFloat()
             val peek = 7 * density
             val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
-            val d = (c.top - sLine) / slot
+            // 겹치기 꺼져 있으면 모든 카드가 제 간격 그대로
+            val d = if (stackOn) (c.top - sLine) / slot else -9f
             val dd = d.coerceIn(0f, 2f)
             // 이 카드가 보일 수 있는 아래 한계 (뒤 카드가 삐져나올 자리만큼 위에서 자름)
             val hasNext = pos + 1 < adapter.itemCount

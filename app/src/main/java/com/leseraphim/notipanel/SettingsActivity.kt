@@ -120,6 +120,12 @@ class SettingsActivity : AppCompatActivity() {
         bindSlider(R.id.slWidth, R.id.lblWidth, Prefs.KEY_BAR_W, Prefs.barW(this)) {
             "사이드바 두께: ${it}dp"
         }
+        findViewById<MaterialSwitch>(R.id.swStack).apply {
+            isChecked = Prefs.stackOn(this@SettingsActivity)
+            setOnCheckedChangeListener { _, c ->
+                Prefs.get(this@SettingsActivity).edit().putBoolean(Prefs.KEY_STACK, c).apply()
+            }
+        }
         bindSlider(R.id.slCard, R.id.lblCard, Prefs.KEY_CARD, Prefs.cardDark(this)) {
             "노티바 진하기: $it%  (0 = 밝은 유리, 100 = 짙은 회색)"
         }
