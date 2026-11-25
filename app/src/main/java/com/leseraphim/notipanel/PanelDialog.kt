@@ -464,7 +464,8 @@ class PanelDialog(
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
             onToggle = { pos ->
-                animateChange { adapter.notifyItemChanged(pos) }
+                // 펼치면 위로 커지고, 다시 접으면 기본 크기로 돌아옴
+                animateChange(allowShrink = true) { adapter.notifyItemChanged(pos) }
                 if (adapter.isExpanded(pos)) revealCard(pos)
             }
         )
@@ -768,7 +769,7 @@ class PanelDialog(
     private var moveAnim: ValueAnimator? = null
 
     /** 지금 카드 위치를 기억하고 목록을 바꾼 뒤, 다음 화면에서 예전 위치→새 위치로 미끄러지게 */
-    private fun animateChange(change: () -> Unit) {
+    private fun animateChange(allowShrink: Boolean = false, change: () -> Unit) {
         val old = HashMap<Long, Float>()
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
@@ -777,7 +778,7 @@ class PanelDialog(
         moveDelta.clear(); newIds.clear()
         pendingOld = old
         change()
-        refitAfterLayout()
+        refitAfterLayout(allowShrink)
     }
 
     private fun startMove() {
@@ -791,14 +792,14 @@ class PanelDialog(
     }
 
     /** 맨 위 알림이 바뀌면 패널 높이 다시 맞추기 (창 크기는 한 번만, 내용은 스프링으로 따라감) */
-    private fun refitAfterLayout() {
+    private fun refitAfterLayout(allowShrink: Boolean = false) {
         list.viewTreeObserver.addOnGlobalLayoutListener(object :
             android.view.ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
                 list.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 list.post {
                     val oldTop = top
-                    fitHeight(onlyIfChangedBy = dp(6), growOnly = true)
+                    fitHeight(onlyIfChangedBy = dp(6), growOnly = !allowShrink)
                     val shift = (oldTop - top).toFloat()   // 위로 커지면 +
                     if (shift != 0f) {
                         // 창이 위로 커진 만큼 내용을 잠깐 아래로 밀어뒀다가, 카드 이동과 같은 시간·곡선으로 올림
