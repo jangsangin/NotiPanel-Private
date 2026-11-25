@@ -41,6 +41,8 @@ class OverlayService : Service() {
     }
 
     private lateinit var wm: WindowManager
+    /** 버튼 창을 붙이는 WindowManager (접근성 켜지면 접근성 쪽 → 키보드 위에 뜸) */
+    private lateinit var bwm: WindowManager
     private var button: FrameLayout? = null
     private lateinit var buttonLp: WindowManager.LayoutParams
     private var panel: PanelDialog? = null
@@ -63,6 +65,7 @@ class OverlayService : Service() {
         addButton()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
         A11yService.addListener(homeListener)
+        A11yService.onConnectionChanged = { rebuildButton() }
         if (!A11yService.onHome) setHidden(true, animate = false)
     }
 
@@ -70,10 +73,11 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         A11yService.removeListener(homeListener)
+        A11yService.onConnectionChanged = null
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
         panel?.dismissNow()
-        button?.let { runCatching { wm.removeView(it) } }
+        button?.let { runCatching { bwm.removeView(it) } }
         button = null
         super.onDestroy()
     }
@@ -141,7 +145,11 @@ class OverlayService : Service() {
             }
         }
 
-        val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        // 접근성 서비스가 켜져 있으면 키보드보다 위에 뜨는 접근성 오버레이 사용
+        val a11y = A11yService.instance
+        bwm = a11y?.getSystemService(WindowManager::class.java) ?: wm
+        val type = if (a11y != null) WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                   else WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
         buttonLp = WindowManager.LayoutParams(
             0, 0, type,
@@ -154,7 +162,7 @@ class OverlayService : Service() {
         button = root
         applyButtonStyle(addFirst = true)
         root.setOnTouchListener(DragTouch())
-        wm.addView(root, buttonLp)
+        bwm.addView(root, buttonLp)
     }
 
     private fun applyButtonStyle(addFirst: Boolean = false) {
@@ -170,7 +178,7 @@ class OverlayService : Service() {
         if (x < 0 || y < 0) placeDefault(update = false) else {
             buttonLp.x = x; buttonLp.y = y
         }
-        if (!addFirst) runCatching { wm.updateViewLayout(b, buttonLp) }
+        if (!addFirst) runCatching { bwm.updateViewLayout(b, buttonLp) }
     }
 
     /** 기본 위치 = 사진에 표시한 오른쪽 아래 동그라미 자리 */
@@ -179,7 +187,7 @@ class OverlayService : Service() {
         val size = buttonLp.width
         buttonLp.x = (w * 0.88f).toInt() - size / 2
         buttonLp.y = (h * 0.824f).toInt() - size / 2
-        if (update) button?.let { runCatching { wm.updateViewLayout(it, buttonLp) } }
+        if (update) button?.let { runCatching { bwm.updateViewLayout(it, buttonLp) } }
     }
 
     /** 끌면 이동, 짧게 누르면 패널 열기 */
@@ -214,7 +222,7 @@ class OverlayService : Service() {
                         val (w, h) = screenSize()
                         buttonLp.x = (startX + dx).toInt().coerceIn(0, w - buttonLp.width)
                         buttonLp.y = (startY + dy).toInt().coerceIn(0, h - buttonLp.height)
-                        wm.updateViewLayout(v, buttonLp)
+                        bwm.updateViewLayout(v, buttonLp)
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -233,6 +241,16 @@ class OverlayService : Service() {
             }
             return true
         }
+    }
+
+    private fun rebuildButton() {
+        button?.let { runCatching { bwm.removeView(it) } }
+        button = null
+        hideAnim?.cancel()
+        val wasHidden = hidden
+        hidden = false
+        addButton()
+        if (wasHidden || !A11yService.onHome) setHidden(true, animate = false)
     }
 
     // ───────── 한 번 터치 = 패널, 두 번 터치 = 화면 끄기 ─────────
@@ -321,7 +339,7 @@ class OverlayService : Service() {
             bg.setStroke(if (c > 0.5f) 0 else dp(1), 0x88FFFFFF.toInt())
             b.alpha = fromA + (toA - fromA) * p.coerceIn(0f, 1f)
             icon.alpha = (fromIcon + (toIcon - fromIcon) * (p * 1.6f).coerceIn(0f, 1f))
-            runCatching { wm.updateViewLayout(b, buttonLp) }
+            runCatching { bwm.updateViewLayout(b, buttonLp) }
         }
 
         if (!animate) { frame(1f, if (hide) 1f else 0f); return }

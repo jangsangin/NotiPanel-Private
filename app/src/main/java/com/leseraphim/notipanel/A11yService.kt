@@ -27,6 +27,9 @@ class A11yService : AccessibilityService() {
         }
 
         private val listeners = mutableSetOf<(Boolean) -> Unit>()
+
+        /** 접근성 켜짐/꺼짐 알림 (터치 아이콘 창을 다시 붙이기 위해) */
+        var onConnectionChanged: (() -> Unit)? = null
         fun addListener(l: (Boolean) -> Unit) { listeners += l }
         fun removeListener(l: (Boolean) -> Unit) { listeners -= l }
 
@@ -47,6 +50,13 @@ class A11yService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         homePkgs = findHomePackages()
+        onConnectionChanged?.invoke()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        instance = null
+        onConnectionChanged?.invoke()
+        return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
