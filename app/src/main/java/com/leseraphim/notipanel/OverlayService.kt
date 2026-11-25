@@ -45,6 +45,7 @@ class OverlayService : Service() {
     private lateinit var buttonLp: WindowManager.LayoutParams
     private var panel: PanelDialog? = null
     private lateinit var bg: GradientDrawable
+    private lateinit var layer: android.graphics.drawable.LayerDrawable
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -130,7 +131,15 @@ class OverlayService : Service() {
             setColor(0x66FFFFFF)
             setStroke(dp(1), 0x88FFFFFF.toInt())
         }
-        root.background = bg
+        layer = android.graphics.drawable.LayerDrawable(arrayOf(bg))
+        root.background = layer
+        // 바 영역은 시스템 뒤로가기 제스처에서 제외
+        root.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            if (Build.VERSION.SDK_INT >= 29) {
+                v.systemGestureExclusionRects =
+                    if (hidden) listOf(Rect(0, 0, v.width, v.height)) else emptyList()
+            }
+        }
 
         val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
@@ -193,6 +202,13 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
                     val dy = e.rawY - downY
+                    if (hidden) {
+                        if (!dragging && dx < -slop * 2) {
+                            dragging = true
+                            openPanel(v)
+                        }
+                        return true
+                    }
                     if (!dragging && (abs(dx) > slop || abs(dy) > slop)) dragging = true
                     if (dragging) {
                         val (w, h) = screenSize()
@@ -203,7 +219,9 @@ class OverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
-                    if (dragging) {
+                    if (hidden) {
+                        if (!dragging && e.actionMasked == MotionEvent.ACTION_UP) openPanel(v)
+                    } else if (dragging) {
                         Prefs.get(this@OverlayService).edit()
                             .putInt(Prefs.KEY_POS_X, buttonLp.x)
                             .putInt(Prefs.KEY_POS_Y, buttonLp.y)
@@ -264,23 +282,24 @@ class OverlayService : Service() {
         val size = dp(Prefs.sizeDp(this))
 
         // 바 크기·위치 (영상 속 회색 바 비율)
-        val barW = dp(5)
-        val barH = (h * 0.095f).toInt()
-        val barX = w - dp(5) - barW
-        val barY = (h * 0.70f).toInt() - barH / 2
+        val barW = dp(5)                       // 눈에 보이는 바 두께
+        val touchW = dp(26)                    // 실제로 터치되는 폭
+        val edge = dp(4)                       // 화면 끝과 바 사이 간격
+        val barH = (h * 0.12f).toInt()
+        val barX = w - touchW
+        val barY = (h * 0.73f).toInt() - barH / 2
 
         val homeX = Prefs.posX(this).takeIf { it >= 0 } ?: defaultX()
         val homeY = Prefs.posY(this).takeIf { it >= 0 } ?: ((h * 0.824f).toInt() - size / 2)
 
         val f = Rect(buttonLp.x, buttonLp.y, buttonLp.x + buttonLp.width, buttonLp.y + buttonLp.height)
-        val t = if (hide) Rect(barX, barY, barX + barW, barY + barH)
+        val t = if (hide) Rect(barX, barY, barX + touchW, barY + barH)
                 else Rect(homeX, homeY, homeX + size, homeY + size)
         val fromA = b.alpha
         val toA = if (hide) 0.85f else Prefs.opacity(this) / 100f
         val fromIcon = icon.alpha
         val toIcon = if (hide) 0f else 1f
 
-        setTouchable(!hide)
         hideAnim?.cancel()
 
         fun frame(p: Float, colorP: Float) {
@@ -288,8 +307,12 @@ class OverlayService : Service() {
             buttonLp.y = (f.top + (t.top - f.top) * p).toInt()
             buttonLp.width = maxOf(1, (f.width() + (t.width() - f.width()) * p).toInt())
             buttonLp.height = maxOf(1, (f.height() + (t.height() - f.height()) * p).toInt())
-            bg.cornerRadius = minOf(buttonLp.width, buttonLp.height) / 2f
             val c = colorP.coerceIn(0f, 1f)
+            // 동그라미일 땐 인셋 0, 바일 땐 오른쪽에 얇게만 그림
+            val insL = ((touchW - barW - edge) * c).toInt()
+            val insR = (edge * c).toInt()
+            layer.setLayerInset(0, insL, 0, insR, 0)
+            bg.cornerRadius = minOf(buttonLp.width - insL - insR, buttonLp.height) / 2f
             // 아이콘(흰 반투명) ↔ 바(연회색)
             bg.setColor(android.graphics.Color.argb(
                 (0x66 + (0xB0 - 0x66) * c).toInt(),
