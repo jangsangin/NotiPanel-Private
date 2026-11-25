@@ -469,10 +469,11 @@ class PanelDialog(
             onReply = { a, text -> sendReply(a, text) },
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
-            onToggle = { pos ->
-                // 펼치면 위로 커지고, 다시 접으면 기본 크기로 돌아옴
-                animateChange(allowShrink = true) { adapter.notifyItemChanged(pos) }
-                if (adapter.isExpanded(pos)) revealCard(pos)
+            onToggle = { changed ->
+                // 펼치면 위로 커지고, 접으면(또는 다른 카드를 펼쳐 자동으로 접히면) 크기가 다시 맞춰짐
+                animateChange(allowShrink = true) { changed.forEach { adapter.notifyItemChanged(it) } }
+                val opened = changed.firstOrNull { adapter.isExpanded(it) }
+                if (opened != null) revealCard(opened)
             }
         )
         list.layoutManager = object : LinearLayoutManager(ctx) {
@@ -513,7 +514,7 @@ class PanelDialog(
             override fun onSwiped(vh: RecyclerView.ViewHolder, dir: Int) {
                 val pos = vh.bindingAdapterPosition
                 val g = adapter.groups.getOrNull(pos) ?: return
-                animateChange { adapter.removeAt(pos) }
+                animateChange(allowShrink = true) { adapter.removeAt(pos) }
                 NotificationStore.dismissMany(g.items.filter { it.isClearable })
             }
 

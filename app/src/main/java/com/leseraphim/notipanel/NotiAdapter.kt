@@ -43,7 +43,7 @@ class NotiAdapter(
     private val onAction: (Notification.Action) -> Unit,
     private val onReply: (Notification.Action, CharSequence) -> Unit,
     private val onReplyOpen: (Boolean, View?) -> Unit = { _, _ -> },
-    private val onToggle: (Int) -> Unit = {}
+    private val onToggle: (List<Int>) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -307,9 +307,16 @@ class NotiAdapter(
             val pos = holder.bindingAdapterPosition
             if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
             val next = !isExpanded(pos)
+            val changed = mutableListOf(pos)
+            if (next) {
+                // 한 번에 하나만 펼침: 다른 펼친 카드는 접기
+                groups.forEachIndexed { i, other ->
+                    if (i != pos && isExpanded(i)) { expandOverride[other.pkg] = false; changed += i }
+                }
+            }
             expandOverride[g.pkg] = next
             btn.animate().rotation(if (next) 180f else 0f).setDuration(180).start()
-            btn.postDelayed({ onToggle(pos) }, 120)
+            btn.postDelayed({ onToggle(changed) }, 120)
         }
     }
 
