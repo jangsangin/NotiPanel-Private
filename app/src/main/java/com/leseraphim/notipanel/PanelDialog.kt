@@ -428,6 +428,10 @@ class PanelDialog(
         // 쌓이기 시작하는 선: 두 번째 카드 아래
         val limit = maxOf(secondBottom, floor - step * 3)
         val xTop = list.height - dp(12 + 36 + 4)                // X 버튼 윗선
+        // 맨 아래에 가까워질수록 쌓기 효과를 풀어서, 끝에서는 원래 간격(10dp) 그대로
+        val toBottom = (list.computeVerticalScrollRange() - list.computeVerticalScrollOffset() -
+            list.computeVerticalScrollExtent()).toFloat()
+        val stackW = (toBottom / (90 * density)).coerceIn(0f, 1f)
 
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
@@ -439,11 +443,13 @@ class PanelDialog(
                 val depth = ((c.bottom - limit) / h).coerceAtLeast(0.05f)
                 val dd = depth.coerceAtMost(3f)
                 // 바닥을 limit + 층간격 에 맞춤 (위로 올라가더라도 두 번째 카드 아래까지만)
-                c.translationY = (limit + dd * step) - c.bottom
-                c.scaleX = 1f - 0.05f * dd
+                // stackW: 맨 아래로 갈수록 0 → 원래 자리·크기로 돌아옴
+                c.translationY = ((limit + dd * step) - c.bottom) * stackW
+                c.scaleX = 1f - 0.05f * dd * stackW
                 c.scaleY = c.scaleX
-                c.alpha = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
-                c.translationZ = -depth
+                val a0 = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
+                c.alpha = 1f + (a0 - 1f) * stackW
+                c.translationZ = -depth * stackW
                 // (블러는 아래에서 X 기준 그라데이션으로)
             } else if (c.top < 0) {
                 val p = (-c.top / h).coerceIn(0f, 1f)
