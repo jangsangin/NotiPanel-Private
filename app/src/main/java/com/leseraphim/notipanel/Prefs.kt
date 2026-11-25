@@ -16,7 +16,7 @@ object Prefs {
     fun get(c: Context): SharedPreferences = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     fun enabled(c: Context) = get(c).getBoolean(KEY_ENABLED, false)
-    fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 60)
+    fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 90)
     fun sizeDp(c: Context) = get(c).getInt(KEY_SIZE, 64)
     fun blur(c: Context) = get(c).getInt(KEY_BLUR, 80)
     fun posX(c: Context) = get(c).getInt(KEY_POS_X, -1)

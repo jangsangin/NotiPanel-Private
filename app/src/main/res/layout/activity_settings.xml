@@ -43,7 +43,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="터치 아이콘 켜기"
+            android:text="사이드바 켜기"
             android:textSize="16sp" />
 
         <TextView
@@ -58,23 +58,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:stepSize="1"
-            android:valueFrom="0"
+            android:valueFrom="30"
             android:valueTo="100" />
-
-        <TextView
-            android:id="@+id/lblSize"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:textSize="16sp" />
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/slSize"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:stepSize="1"
-            android:valueFrom="32"
-            android:valueTo="120" />
 
         <TextView
             android:id="@+id/lblBlur"
@@ -90,14 +75,13 @@
             android:stepSize="1"
             android:valueFrom="0"
             android:valueTo="150" />
-
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnResetPos"
+            android:id="@+id/btnTest"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="아이콘 위치 초기화" />
+            android:text="사이드바 5초간 보이기 (확인용)" />
 
         <TextView
             android:id="@+id/homeInfo"
@@ -117,7 +101,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="한 번 터치: 패널 열기 / 두 번 터치: 화면 끄기\n아이콘은 끌어서 옮길 수 있어요. 투명도 0%여도 그 자리를 누르면 동작해요.\n홈 화면이 아닐 때는 아이콘이 옆으로 숨어요."
+            android:text="홈 화면에서는 아무것도 안 떠요.
+다른 앱을 켜면 오른쪽 끝에 사이드바가 나오고, 왼쪽으로 밀면 알림 패널이 열려요."
             android:textSize="13sp" />
 
         <TextView

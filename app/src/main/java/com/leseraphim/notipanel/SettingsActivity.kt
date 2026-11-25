@@ -62,17 +62,16 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         bindSlider(R.id.slOpacity, R.id.lblOpacity, Prefs.KEY_OPACITY, Prefs.opacity(this)) {
-            "터치 아이콘 불투명도: $it%  (0 = 완전 투명)"
-        }
-        bindSlider(R.id.slSize, R.id.lblSize, Prefs.KEY_SIZE, Prefs.sizeDp(this)) {
-            "터치 아이콘 크기: ${it}dp"
+            "사이드바 진하기: $it%"
         }
         bindSlider(R.id.slBlur, R.id.lblBlur, Prefs.KEY_BLUR, Prefs.blur(this)) {
             "패널 블러 강도: $it"
         }
 
-        findViewById<MaterialButton>(R.id.btnResetPos).setOnClickListener {
-            prefs.edit().remove(Prefs.KEY_POS_X).remove(Prefs.KEY_POS_Y).apply()
+        findViewById<MaterialButton>(R.id.btnTest).setOnClickListener {
+            val svc = OverlayService.instance
+            if (svc == null) Toast.makeText(this, "먼저 '사이드바 켜기'를 켜 주세요", Toast.LENGTH_SHORT).show()
+            else svc.testShow()
         }
 
         val blurInfo = findViewById<TextView>(R.id.blurInfo)
