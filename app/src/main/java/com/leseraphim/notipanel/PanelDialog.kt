@@ -663,23 +663,30 @@ class PanelDialog(
             var stackedBehind = false
             c.pivotX = c.width / 2f
             c.pivotY = c.height.toFloat()
-            // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기:
-            // 이 선(S)보다 아래에서 시작하는 카드는 S에 붙고, 뒤 카드는 조금씩 작아지며
-            // 세 번째 카드와의 간격 안으로 위 테두리만 살짝 보임 (최대 3장)
+            // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기 (최대 3장):
+            // 네 번째 카드가 맨 위·맨 앞(아래를 둥글게 잘라 짧게), 뒤 카드는 아래로 한 칸씩 내려가며 좁아짐
             val sLine = (list.height - list.paddingBottom).toFloat()
+            val peek = 7 * density
             val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
             val d = (c.top - sLine) / slot
+            val dd = d.coerceIn(0f, 2f)
+            // 이 카드가 보일 수 있는 아래 한계 (뒤 카드가 삐져나올 자리만큼 위에서 자름)
+            val hasNext = pos + 1 < adapter.itemCount
+            if (d > -1f && hasNext || d > 0f) {
+                val clipBottom = list.height - (2f - dd) * peek
+                val visTop = if (d > 0f) sLine + dd * peek else c.top.toFloat()
+                setClipHeight(c, (clipBottom - visTop).toInt())
+            } else setClipHeight(c, -1)
             if (d > 0f) {
-                val dd = d.coerceAtMost(2f)
                 c.pivotX = c.width / 2f
                 c.pivotY = 0f
-                c.translationY = (sLine - dd * 4 * density) - c.top
+                c.translationY = (sLine + dd * peek) - c.top
                 c.scaleX = 1f - 0.06f * dd
-                c.scaleY = c.scaleX
+                c.scaleY = 1f
                 c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
                 c.translationZ = -d
                 stackedBehind = d >= 0.5f
-                // 뒤로 들어갈수록 카드 속 글씨·아이콘을 지움 → 앞 카드 너머로 비치지 않고 유리판 테두리만
+                // 뒤로 들어갈수록 카드 속 글씨·아이콘을 지움 → 유리판 띠만
                 setContentAlpha(c, (1f - d).coerceIn(0f, 1f))
             } else if (c.top < 0) {
                 setContentAlpha(c, 1f)
@@ -808,6 +815,28 @@ class PanelDialog(
                 }
             }
         })
+    }
+
+    /** 카드 아래를 둥글게 잘라 h 높이만 보이게 (h<0 이면 원래대로) */
+    private val clipOutline = object : android.view.ViewOutlineProvider() {
+        override fun getOutline(v: View, o: android.graphics.Outline) {
+            val ch = (v.getTag(R.id.clip_h) as? Int) ?: -1
+            val h = if (ch in 1 until v.height) ch else v.height
+            val r = minOf(26 * density, h / 2f)
+            o.setRoundRect(0, 0, v.width, h, r)
+        }
+    }
+
+    private fun setClipHeight(c: View, h: Int) {
+        val nh = if (h <= 0 || h >= c.height) -1 else maxOf(h, dp(14))
+        if (c.outlineProvider !== clipOutline) {
+            c.outlineProvider = clipOutline
+            c.clipToOutline = true
+        }
+        if ((c.getTag(R.id.clip_h) as? Int ?: -1) != nh) {
+            c.setTag(R.id.clip_h, nh)
+            c.invalidateOutline()
+        }
     }
 
     /** 카드 배경(유리판)은 두고 안쪽 내용만 투명도 조절 */
