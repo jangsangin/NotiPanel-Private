@@ -178,18 +178,21 @@ class PanelDialog(
         val second = list.getChildAt(1)
         // 뒤에 쌓이는 카드 수만큼만 여유를 둠 (X 버튼과 간격 최소화)
         val stacked = (adapter.itemCount - 2).coerceIn(0, 3)
-        // 첫 알림이 답장 가능한 채팅이면: 입력에 집중하도록 두 번째부터는 반만 보이게
+        // 첫 알림이 답장 가능한 채팅이면: 두 번째 알림은 일부만 보이고 X가 그 30% 정도를 덮음
         val replyMode = adapter.groups.firstOrNull()?.latest?.notification?.actions
             ?.any { !it.remoteInputs.isNullOrEmpty() } == true
-        list.clipToPadding = replyMode
+        val xZone = dp(12 + 36)                    // X 버튼 + 아래 여백
         val need = if (first == null) dp(200)
         else if (replyMode)
-            list.paddingTop + first.height + gap + (second?.let { it.height / 2 } ?: 0) + list.paddingBottom
+            list.paddingTop + first.height + gap +
+                (second?.let { (it.height * 0.45f).toInt() + (xZone * 0.7f).toInt() } ?: xZone) +
+                list.paddingBottom
         else
+            // 상태바 알림창처럼: 두 번째 카드 아래 쌓인 카드들 위로 X가 떠 있음
             list.paddingTop + first.height + gap +
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
-                list.paddingBottom
+                dp(20) + list.paddingBottom
         val h = need.coerceIn(dp(180), maxHeight())
         top = bottom - h
         placeWindow(top, h)
@@ -289,6 +292,7 @@ class PanelDialog(
         list.itemAnimator = null
         list.setHasFixedSize(false)
         list.viewTreeObserver.addOnPreDrawListener { applyStack(); true }
+        setupBounce()
 
         // 좌우로 밀어서 알림 지우기
         ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
@@ -308,6 +312,53 @@ class PanelDialog(
         }).attachToRecyclerView(list)
 
         content.findViewById<View>(R.id.close).setOnClickListener { clearAllAndClose() }
+    }
+
+    /**
+     * 고무줄 효과: 맨 위에서 아래로(또는 맨 아래에서 위로) 더 끌면 저항감 있게 따라오고,
+     * 손을 떼면 스프링처럼 튕기며 제자리로 돌아온다.
+     */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun setupBounce() {
+        var lastY = 0f
+        var pull = 0f
+        var spring: androidx.dynamicanimation.animation.SpringAnimation? = null
+        val maxPull = 160 * density
+        list.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel() }
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = e.rawY - lastY
+                    lastY = e.rawY
+                    val atTop = !list.canScrollVertically(-1)
+                    val atBottom = !list.canScrollVertically(1)
+                    if (pull != 0f || (dy > 0 && atTop) || (dy < 0 && atBottom)) {
+                        spring?.cancel()
+                        // 많이 끌수록 더 뻑뻑하게
+                        val resist = 0.5f * (1f - (kotlin.math.abs(pull) / maxPull)).coerceIn(0.1f, 1f)
+                        val next = pull + dy * resist
+                        // 방향이 바뀌어 0을 지나면 일반 스크롤로 복귀
+                        pull = if (pull != 0f && kotlin.math.sign(next) != kotlin.math.sign(pull)) 0f else next
+                        list.translationY = pull
+                        if (pull != 0f) return@setOnTouchListener true
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (pull != 0f) {
+                        pull = 0f
+                        spring = androidx.dynamicanimation.animation.SpringAnimation(
+                            list, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f
+                        ).apply {
+                            this.spring.stiffness = androidx.dynamicanimation.animation.SpringForce.STIFFNESS_LOW
+                            this.spring.dampingRatio = 0.55f      // 살짝 튕김
+                            start()
+                        }
+                        return@setOnTouchListener true
+                    }
+                }
+            }
+            false
+        }
     }
 
     /** X: 지울 수 있는 알림을 카드가 옆으로 빠지는 애니메이션과 함께 지우고 패널 닫기 */
@@ -346,8 +397,9 @@ class PanelDialog(
             val c = list.getChildAt(i)
             if (list.getChildAdapterPosition(c) == 1) secondBottom = c.bottom.toFloat()
         }
-        // 쌓이기 시작하는 선: 두 번째 카드 아래, 그리고 X 위 (쌓임 여유만큼)
+        // 쌓이기 시작하는 선: 두 번째 카드 아래
         val limit = maxOf(secondBottom, floor - step * 3)
+        val xTop = list.height - dp(12 + 36 + 4)                // X 버튼 윗선
 
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
@@ -377,7 +429,8 @@ class PanelDialog(
                 c.scaleX = 1f; c.scaleY = 1f
                 c.alpha = 1f
                 c.translationZ = 0f
-                setBlur(c, 0)
+                // X 버튼 뒤로 지나가는 카드(첫 카드 제외)는 블러
+                setBlur(c, if (pos >= 1 && c.bottom > xTop) 12 else 0)
             }
             val (off, a) = enterOffset(i)
             c.translationY += off
