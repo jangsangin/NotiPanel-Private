@@ -108,15 +108,17 @@ class PanelDialog(
         w.setGravity(Gravity.TOP or Gravity.START)
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
 
-        val bg = GradientDrawable().apply { cornerRadius = corner }
-        if (blurOk) {
-            bg.setColor(Color.argb(70, 60, 60, 60))
-            w.setBackgroundDrawable(bg)
-            w.setBackgroundBlurRadius(0)
-        } else {
-            bg.setColor(Color.argb(235, 80, 80, 80))
-            w.setBackgroundDrawable(bg)
+        // 유리 패널: 살짝 밝은 위쪽 → 아래 그라데이션 + 얇은 빛 테두리
+        val bg = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            if (blurOk) intArrayOf(Color.argb(70, 120, 120, 120), Color.argb(55, 40, 40, 40))
+            else intArrayOf(Color.argb(225, 105, 105, 105), Color.argb(235, 70, 70, 70))
+        ).apply {
+            cornerRadius = corner
+            setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(70, 255, 255, 255))
         }
+        w.setBackgroundDrawable(bg)
+        if (blurOk) w.setBackgroundBlurRadius(0)
         w.decorView.setPadding(0, 0, 0, 0)
         w.decorView.alpha = 0f
         placeWindow(top, bottom - top)
