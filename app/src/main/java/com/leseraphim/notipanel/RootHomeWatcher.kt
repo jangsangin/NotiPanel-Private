@@ -67,7 +67,7 @@ class RootHomeWatcher(private val ctx: Context, private val onPkg: (String) -> U
                     if (rootOk != true) { rootOk = true; main.post { onState?.invoke() } }
                     pkg?.let { main.post { onPkg(it) } }
                 }
-                Thread.sleep(800)
+                Thread.sleep(250)
             }
         } catch (_: Exception) {
         } finally {

@@ -112,12 +112,21 @@ class A11yService : AccessibilityService() {
         lastPkg = pkg
         if (changedPkg) pkgListener?.invoke()
         if (homePkgs.isEmpty()) homePkgs = findHomePackages()
-        val home = pkg in homePkgs
+        // 홈 제스처를 시작하는 순간(앱 뒤로 런처 창이 보이기 시작) 바로 홈으로 판단
+        val home = pkg in homePkgs || launcherVisible()
         if (home != onHome) {
             onHome = home
             listeners.toList().forEach { it(home) }
         }
     }
+
+    /** 런처 창이 화면에 보이는지 (앱 안에 있을 땐 런처 창이 목록에 안 나옴) */
+    private fun launcherVisible(): Boolean = runCatching {
+        windows.any { w ->
+            w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION &&
+                (w.root?.packageName?.toString() in homePkgs)
+        }
+    }.getOrDefault(false)
 
     private fun topAppPackage(): String? = runCatching {
         windows
