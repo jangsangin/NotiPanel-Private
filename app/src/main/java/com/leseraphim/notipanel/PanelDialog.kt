@@ -345,7 +345,9 @@ class PanelDialog(
             onReply = { a, text -> sendReply(a, text) },
             onReplyOpen = { open -> watchKeyboard(open) }
         )
-        list.layoutManager = LinearLayoutManager(ctx)
+        list.layoutManager = object : LinearLayoutManager(ctx) {
+            override fun canScrollVertically() = !horizontalLock && super.canScrollVertically()
+        }
         list.adapter = adapter
         list.itemAnimator = null
         list.setHasFixedSize(false)
@@ -357,6 +359,9 @@ class PanelDialog(
             0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
         ) {
             override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder) = false
+
+            override fun getSwipeThreshold(vh: RecyclerView.ViewHolder) = 0.35f
+            override fun getSwipeEscapeVelocity(default: Float) = default * 0.6f
 
             override fun getSwipeDirs(rv: RecyclerView, vh: RecyclerView.ViewHolder): Int {
                 val g = adapter.groups.getOrNull(vh.bindingAdapterPosition) ?: return 0
@@ -391,15 +396,35 @@ class PanelDialog(
         var spring: androidx.dynamicanimation.animation.SpringAnimation? = null
         val maxPull = 160 * density
         // 카드가 터치를 먼저 받아도 손가락 위치/누름 상태는 항상 기록
+        // + 처음 움직인 방향으로 축 고정 (좌우로 밀기 시작하면 위아래 스크롤·튕김 없음)
+        val slop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+        var downX = 0f
+        var downY = 0f
+        var decided = false
         list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
             override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
                 when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel(); touching = true }
+                    MotionEvent.ACTION_DOWN -> {
+                        lastY = e.rawY; spring?.cancel(); touching = true
+                        downX = e.rawX; downY = e.rawY
+                        decided = false; horizontalLock = false
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!decided) {
+                            val dx = kotlin.math.abs(e.rawX - downX)
+                            val dy = kotlin.math.abs(e.rawY - downY)
+                            if (dx > slop || dy > slop) {
+                                decided = true
+                                horizontalLock = dx > dy
+                            }
+                        }
+                        if (pull == 0f) lastY = e.rawY
+                    }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         touching = false
                         if (refreshPending) scheduleRefresh()
+                        rv.post { horizontalLock = false }
                     }
-                    MotionEvent.ACTION_MOVE -> if (pull == 0f) lastY = e.rawY
                 }
                 return false
             }
@@ -408,6 +433,7 @@ class PanelDialog(
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel(); touching = true }
                 MotionEvent.ACTION_MOVE -> {
+                    if (horizontalLock || swiping) return@setOnTouchListener false
                     val dy = e.rawY - lastY
                     lastY = e.rawY
                     val atTop = !list.canScrollVertically(-1)
@@ -651,6 +677,7 @@ class PanelDialog(
     private val refreshRunnable = Runnable { refreshNow() }
 
     private var swiping = false
+    private var horizontalLock = false     // 좌우로 미는 중 → 세로 스크롤 잠금
     private var touching = false
     private var refreshPending = false
 
