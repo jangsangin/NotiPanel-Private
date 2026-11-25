@@ -53,6 +53,13 @@
                     android:layout_height="wrap_content"
                     android:textColor="#B3FFFFFF"
                     android:textSize="13sp" />
+                <ImageView
+                    android:id="@+id/expandBtn"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:src="@drawable/ic_chevron" />
             </LinearLayout>
 
             <TextView
@@ -90,23 +97,4 @@
     <!-- 버튼 줄 ↔ 답장 입력칸 (공용) -->
     <include layout="@layout/reply_area" />
 
-    <!-- 묶인 알림 펼친 목록 -->
-    <LinearLayout
-        android:id="@+id/subItems"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone" />
-
-    <!-- 오른쪽 아래 펼치기 화살표 -->
-    <ImageView
-        android:id="@+id/expandBtn"
-        android:layout_width="32dp"
-        android:layout_height="24dp"
-        android:layout_gravity="end"
-        android:layout_marginTop="2dp"
-        android:layout_marginBottom="-6dp"
-        android:padding="2dp"
-        android:src="@drawable/ic_chevron"
-        android:visibility="gone" />
 </LinearLayout>

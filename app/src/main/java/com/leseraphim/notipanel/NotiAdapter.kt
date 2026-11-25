@@ -61,8 +61,13 @@ class NotiAdapter(
 
     private val appNames = HashMap<String, String>()
 
-    /** 화살표로 펼친 묶음 (앱 패키지) */
-    val expanded = HashSet<String>()
+    /** 화살표로 바꾼 카드별 펼침 상태 (없으면 기본: 맨 위만 펼침) */
+    val expandOverride = HashMap<String, Boolean>()
+
+    fun isExpanded(pos: Int): Boolean {
+        val g = groups.getOrNull(pos) ?: return false
+        return expandOverride[g.pkg] ?: (pos == 0)
+    }
     private val appIcons = HashMap<String, Drawable?>()
     private val density = ctx.resources.displayMetrics.density
 
@@ -104,7 +109,7 @@ class NotiAdapter(
 
     override fun getItemCount() = groups.size
     override fun getItemId(position: Int) = groups[position].pkg.hashCode().toLong()
-    override fun getItemViewType(position: Int) = if (position == 0) TYPE_EXPANDED else TYPE_COLLAPSED
+    override fun getItemViewType(position: Int) = if (isExpanded(position)) TYPE_EXPANDED else TYPE_COLLAPSED
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inf = LayoutInflater.from(ctx)
@@ -238,13 +243,9 @@ class NotiAdapter(
                 val t = text(n)
                 if (t.isNotEmpty()) messagesV.addView(line(t, 14f, 0.95f, maxLines = 4))
             }
-            // 같은 앱의 다른 알림: 펼쳤으면 아래 목록으로, 아니면 2개까지 한 줄씩
-            val subs: LinearLayout = itemView.findViewById(R.id.subItems)
-            val isExp = g.pkg in expanded && g.items.size >= 2
-            if (isExp) { subs.visibility = View.VISIBLE; fillSubs(subs, g.items.drop(1)) }
-            else { subs.visibility = View.GONE; subs.removeAllViews() }
+            // 같은 앱의 다른 알림 2개까지 한 줄씩
             setupExpand(this, g)
-            if (!isExp) g.items.drop(1).take(2).forEach {
+            g.items.drop(1).take(2).forEach {
                 val s = SpannableStringBuilder(bold(title(it.notification))).append("  ").append(text(it.notification))
                 messagesV.addView(line(s, 13f, 0.7f, maxLines = 1, top = dp(4)))
             }
@@ -272,20 +273,20 @@ class NotiAdapter(
     }
 
     // ───────── 묶음 펼치기 (화살표) ─────────
-    /** 화살표 상태 맞추고 누르면 펼침/접힘 */
+    /** 오른쪽 위 화살표: ⌄ 누르면 그 카드 펼침, ⌃ 누르면 접힘 */
     private fun setupExpand(holder: RecyclerView.ViewHolder, g: NotiGroup) {
         val btn: ImageView = holder.itemView.findViewById(R.id.expandBtn)
-        val many = g.items.size >= 2
-        btn.visibility = if (many) View.VISIBLE else View.GONE
-        val isExp = g.pkg in expanded
+        val pos0 = holder.bindingAdapterPosition
+        val isExp = pos0 != RecyclerView.NO_POSITION && isExpanded(pos0)
         btn.animate().cancel()
         btn.rotation = if (isExp) 180f else 0f
         btn.setOnClickListener {
             val pos = holder.bindingAdapterPosition
             if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
-            if (!expanded.remove(g.pkg)) expanded += g.pkg
-            btn.animate().rotation(if (g.pkg in expanded) 180f else 0f).setDuration(200).start()
-            onToggle(pos)
+            val next = !isExpanded(pos)
+            expandOverride[g.pkg] = next
+            btn.animate().rotation(if (next) 180f else 0f).setDuration(180).start()
+            btn.postDelayed({ onToggle(pos) }, 120)
         }
     }
 
@@ -479,20 +480,7 @@ class NotiAdapter(
             line2.visibility = if (line2.text.isNullOrEmpty()) View.GONE else View.VISIBLE
             // 답장 가능한 채팅 알림이면 접힌 카드에도 '답장' 버튼
             val canReply = n.actions?.any { !it.remoteInputs.isNullOrEmpty() } == true
-            val subs: LinearLayout = itemView.findViewById(R.id.subItems)
-            val isExp = g.pkg in expanded && g.items.size >= 2
-            if (isExp) {
-                // 펼침: 앱 이름 + 개수만 위에, 알림은 아래에 하나씩 (채팅은 각각 답장 가능)
-                line1.text = "${appName(sbn.packageName)} · 알림 ${g.items.size}개"
-                line1.setTypeface(null, Typeface.BOLD)
-                line2.visibility = View.GONE
-                replyBox.hide()
-                subs.visibility = View.VISIBLE
-                fillSubs(subs, g.items)
-            } else {
-                subs.visibility = View.GONE; subs.removeAllViews()
-                if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
-            }
+            if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
             setupExpand(this, g)
             itemView.setOnClickListener { onOpen(sbn) }
         }
