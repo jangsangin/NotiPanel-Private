@@ -7,7 +7,7 @@ import android.content.SharedPreferences
 object Prefs {
     const val FILE = "settings"
     const val KEY_ENABLED = "enabled"
-    const val KEY_OPACITY = "opacity"   // 터치 아이콘 불투명도 0~100
+    const val KEY_OPACITY = "bar_opacity"   // 사이드바 진하기 50~100 (예전 아이콘 값과 분리)
     const val KEY_SIZE = "size_dp"      // 터치 아이콘 크기(dp)
     const val KEY_BLUR = "blur"         // 패널 블러 강도(px)
     const val KEY_POS_X = "pos_x"
@@ -16,7 +16,7 @@ object Prefs {
     fun get(c: Context): SharedPreferences = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     fun enabled(c: Context) = get(c).getBoolean(KEY_ENABLED, false)
-    fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 90)
+    fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 100)
     fun sizeDp(c: Context) = get(c).getInt(KEY_SIZE, 64)
     fun blur(c: Context) = get(c).getInt(KEY_BLUR, 80)
     fun posX(c: Context) = get(c).getInt(KEY_POS_X, -1)

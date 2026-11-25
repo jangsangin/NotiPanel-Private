@@ -81,6 +81,7 @@ class OverlayService : Service() {
         updateWatcher()
         rebuildBar()
         handler.postDelayed(sampler, 800)
+        RootShell.warmUp()
         if (A11yService.instance == null) {
             Toast.makeText(this, "접근성을 켜야 사이드바가 키보드 위에 보여요", Toast.LENGTH_LONG).show()
         }
@@ -164,7 +165,7 @@ class OverlayService : Service() {
 
     // ───────── 사이드바 ─────────
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun barAlpha() = (Prefs.opacity(this).coerceAtLeast(30)) / 100f
+    private fun barAlpha() = (Prefs.opacity(this).coerceIn(50, 100)) / 100f
 
     fun screenSize(): Pair<Int, Int> {
         val b = wm.currentWindowMetrics.bounds
@@ -331,14 +332,13 @@ class OverlayService : Service() {
             val a11y = A11yService.instance
             val ok = a11y?.replay(x1, y1, x2, y2, dur, restore) ?: false
             if (!ok) {
-                // 접근성 없으면 루트로
-                Thread {
-                    val moved = kotlin.math.hypot(x2 - x1, y2 - y1) > slopPx()
-                    val cmd = if (moved) "input swipe ${x1.toInt()} ${y1.toInt()} ${x2.toInt()} ${y2.toInt()} ${dur.coerceIn(40, 1500)}"
-                              else "input tap ${x1.toInt()} ${y1.toInt()}"
-                    runCatching { Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor() }
-                    handler.post { restore() }
-                }.start()
+                // 접근성 없으면 미리 열어둔 루트 셸로 바로 전달
+                val moved = kotlin.math.hypot(x2 - x1, y2 - y1) > slopPx()
+                val cmd = if (moved) "input swipe ${x1.toInt()} ${y1.toInt()} ${x2.toInt()} ${y2.toInt()} ${dur.coerceIn(40, 1500)}"
+                          else "input tap ${x1.toInt()} ${y1.toInt()}"
+                RootShell.run(cmd)
+                // input 명령이 실행될 시간만큼 기다렸다가 다시 터치 받기
+                handler.postDelayed({ restore() }, 450)
             }
         }, 30)
     }
