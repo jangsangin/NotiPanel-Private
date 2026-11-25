@@ -88,10 +88,9 @@ class PanelDialog(
         setupWindow()
     }
 
-    /** 접힌 알림 3개 + 간격 + X 버튼 영역 높이 */
+    /** 접힌 알림 3개 + 간격 + X 버튼 영역 높이 (딱 맞아서 스크롤이 생기지 않음) */
     private fun threeCardHeight(): Int {
         val gap = dp(10)
-        // 화면에 있는 접힌 카드 높이를 재서 씀 (없으면 대략값)
         var cardH = 0
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
@@ -99,8 +98,21 @@ class PanelDialog(
             if (pos != RecyclerView.NO_POSITION && !adapter.isExpanded(pos)) { cardH = c.height; break }
         }
         if (cardH <= 0) cardH = dp(80)
-        val xZone = dp(6 + 36 + 12)              // 마지막 카드와 1mm 간격 + X + 아래 여백
-        return (list.paddingTop + (cardH + gap) * 3 - gap + xZone).coerceAtMost(maxHeight())
+        return (dp(12) + (cardH + gap) * 3 + list.paddingBottom).coerceAtMost(maxHeight())
+    }
+
+    /** 맨 위 카드 3장(펼친 카드 포함)이 전부 들어가는 높이 */
+    private fun firstThreeHeight(): Int? {
+        val gap = dp(10)
+        var sum = 0
+        var found = 0
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            val pos = list.getChildAdapterPosition(c)
+            if (pos in 0..2) { sum += c.height + gap; found++ }
+        }
+        if (found < 3) return null
+        return dp(12) + sum + list.paddingBottom
     }
 
     /** 기본(최대) 패널 높이: 화면의 61.6% (예전 56%에서 10% 키움) */
@@ -322,17 +334,20 @@ class PanelDialog(
         val xZone = dp(12 + 36)                    // X 버튼 + 아래 여백
         val need = if (first == null) dp(200)
         else if (replyMode)
-            list.paddingTop + first.height + gap +
+            dp(12) + first.height + gap +
                 (second?.let { (it.height * 0.45f).toInt() + (xZone * 0.7f).toInt() } ?: xZone) +
                 dp(8)
         else
             // 상태바 알림창처럼: 두 번째 카드 아래 쌓인 카드들 위로 X가 떠 있음
-            list.paddingTop + first.height + gap +
+            dp(12) + first.height + gap +
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
                 dp(20) + dp(8)
         // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
-        val h = if (adapter.itemCount >= 3) threeCardHeight() else need.coerceIn(dp(180), maxHeight())
+        // 3개 이상: 기본은 접힌 카드 3장 높이, 위 3장 중 펼친 게 있으면 그만큼 위로 커짐
+        val h = if (adapter.itemCount >= 3)
+            maxOf(threeCardHeight(), firstThreeHeight() ?: 0).coerceAtMost(maxHeight())
+        else need.coerceIn(dp(180), maxHeight())
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
         if (growOnly && h <= bottom - top) return
         top = bottom - h
@@ -617,7 +632,7 @@ class PanelDialog(
         var secondBottom = -1f
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
-            if (list.getChildAdapterPosition(c) == 1) secondBottom = c.bottom.toFloat()
+            if (list.getChildAdapterPosition(c) == STACK_FROM - 1) secondBottom = c.bottom.toFloat()
         }
         // 쌓이기 시작하는 선: 두 번째 카드 아래
         val limit = maxOf(secondBottom, floor - step * 3)
@@ -629,7 +644,7 @@ class PanelDialog(
         var overflow = false
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
-            if (list.getChildAdapterPosition(c) >= 2 && c.bottom > floor) { overflow = true; break }
+            if (list.getChildAdapterPosition(c) >= STACK_FROM && c.bottom > floor) { overflow = true; break }
         }
         val stackW = if (!overflow) 0f else (toBottom / (90 * density)).coerceIn(0f, 1f)
 
@@ -640,7 +655,7 @@ class PanelDialog(
             var stackedBehind = false
             c.pivotX = c.width / 2f
             c.pivotY = c.height.toFloat()
-            if (pos >= 2 && c.bottom > limit) {
+            if (pos >= STACK_FROM && c.bottom > limit) {
                 val depth = ((c.bottom - limit) / h).coerceAtLeast(0.05f)
                 val dd = depth.coerceAtMost(3f)
                 // 바닥을 limit + 층간격 에 맞춤 (위로 올라가더라도 두 번째 카드 아래까지만)
@@ -721,7 +736,7 @@ class PanelDialog(
                 c.top < 0 -> list.smoothScrollBy(0, c.top - dp(8))
                 over > 0 -> list.smoothScrollBy(0, minOf(over, c.top - dp(8)).coerceAtLeast(0))
             }
-        }, 60)
+        }, 380)
     }
 
     // ───────── 목록 변경 애니메이션 ─────────
@@ -766,13 +781,14 @@ class PanelDialog(
                     fitHeight(onlyIfChangedBy = dp(6), growOnly = true)
                     val shift = (oldTop - top).toFloat()   // 위로 커지면 +
                     if (shift != 0f) {
-                        // 창이 바뀐 만큼 내용이 튀지 않게 잠깐 반대로 밀어뒀다가 스프링으로 제자리
+                        // 창이 위로 커진 만큼 내용을 잠깐 아래로 밀어뒀다가, 카드 이동과 같은 시간·곡선으로 올림
+                        // → 아래쪽 카드는 제자리, 펼친 카드와 그 위 카드들이 위로 자라나는 것처럼 보임
                         list.translationY += shift
-                        androidx.dynamicanimation.animation.SpringAnimation(
-                            list, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f
-                        ).apply {
-                            this.spring.stiffness = androidx.dynamicanimation.animation.SpringForce.STIFFNESS_MEDIUM
-                            this.spring.dampingRatio = 0.85f
+                        val from = list.translationY
+                        ValueAnimator.ofFloat(from, 0f).apply {
+                            duration = 300
+                            interpolator = moveInterp
+                            addUpdateListener { list.translationY = it.animatedValue as Float }
                             start()
                         }
                     }
@@ -895,6 +911,8 @@ class PanelDialog(
 
     companion object {
         const val STACK_STEP_DP = 8
+        /** 이 순번부터 아래로 쌓임 (앞 3장은 겹치지 않음) */
+        const val STACK_FROM = 3
         /** 마지막으로 잰 키보드 높이 (다음에 키보드와 동시에 움직일 때 사용) */
         var cachedImeHeight = 0
     }
