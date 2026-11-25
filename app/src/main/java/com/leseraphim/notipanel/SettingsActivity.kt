@@ -27,7 +27,18 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         val ver = packageManager.getPackageInfo(packageName, 0).versionName
-        title = "노티패널 설정  v$ver"
+        findViewById<TextView>(R.id.appTitle).text = "노티패널 설정  v$ver"
+
+        // 상단바·하단 제스처 바 영역만큼 여백 (내용이 상단바에 가리지 않게)
+        val root = findViewById<android.view.View>(R.id.root)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                    androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+            )
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
 
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
