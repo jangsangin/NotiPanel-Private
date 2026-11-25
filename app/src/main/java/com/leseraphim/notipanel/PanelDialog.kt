@@ -523,7 +523,20 @@ class PanelDialog(
             override fun onSelectedChanged(vh: RecyclerView.ViewHolder?, state: Int) {
                 super.onSelectedChanged(vh, state)
                 swiping = state == ItemTouchHelper.ACTION_STATE_SWIPE
-                if (!swiping && refreshPending) scheduleRefresh()
+                if (!swiping) {
+                    // 밀기가 끝나면 잠금 해제 (삭제 기능이 터치를 가져가서 '손 뗌' 신호가 우리한테 안 옴)
+                    horizontalLock = false
+                    touching = false
+                    list.invalidate()
+                    if (refreshPending) scheduleRefresh()
+                }
+            }
+
+            override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
+                super.clearView(rv, vh)
+                horizontalLock = false
+                swiping = false
+                list.invalidate()
             }
         }).attachToRecyclerView(list)
 
@@ -800,6 +813,19 @@ class PanelDialog(
             for (i in 0 until list.childCount) resetCard(list.getChildAt(i))
             applyStack()
             list.invalidate()
+            if (!keyboardWatch) {
+                val oldTop = top
+                fitHeight(onlyIfChangedBy = dp(6))
+                val shift = (oldTop - top).toFloat()
+                if (shift != 0f) {
+                    list.translationY += shift
+                    ValueAnimator.ofFloat(list.translationY, 0f).apply {
+                        duration = 300; interpolator = moveInterp
+                        addUpdateListener { list.translationY = it.animatedValue as Float }
+                        start()
+                    }
+                }
+            }
         }
     }
 
