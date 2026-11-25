@@ -72,6 +72,7 @@ class PanelDialog(
         left = dp(14); right = screenW - dp(14)
         bottom = barBottom
         top = bottom - maxHeight()
+        if (cachedImeHeight <= 0) cachedImeHeight = (screenH * 0.42f).toInt()
         blurOk = Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
 
         val root = FrameLayout(ctx)
@@ -134,21 +135,31 @@ class PanelDialog(
         baseY = y
     }
 
-    // ───────── 키보드 따라 패널 올리기 ─────────
+    // ───────── 키보드 따라 패널 올리기 (키보드 애니메이션과 같은 시간·곡선) ─────────
     private var keyboardWatch = false
-    private var lastImeTop: Int? = null
+    private var imeSeen = false
+    private var watchStart = 0L
     private var posAnim: ValueAnimator? = null
+    private val imeInterp = PathInterpolator(0.2f, 0f, 0f, 1f)   // 키보드 애니메이션과 비슷한 곡선
 
-    /** 입력칸이 열리면 호출: 키보드 위치를 계속 확인해서 패널을 그 위로 */
+    private fun targetYFor(imeTop: Int): Int {
+        val h = window?.attributes?.height ?: 0
+        return minOf(baseY, (imeTop - dp(8) - h).coerceAtLeast(dp(30)))
+    }
+
+    /** 입력칸 열림/닫힘: 키보드가 움직이기 시작하는 순간 같이 움직임 */
     fun watchKeyboard(on: Boolean) {
         keyboardWatch = on
+        main.removeCallbacks(keyboardTick)
         if (on) {
-            main.removeCallbacks(keyboardTick)
-            main.post(keyboardTick)
+            imeSeen = false
+            watchStart = android.os.SystemClock.uptimeMillis()
+            // 지난번에 잰 키보드 높이로 바로 출발 (키보드와 동시에)
+            slideWindowTo(targetYFor(screenH - cachedImeHeight), 285)
+            main.postDelayed(keyboardTick, 120)
         } else {
-            main.removeCallbacks(keyboardTick)
-            lastImeTop = null
-            slideWindowTo(baseY)
+            slideWindowTo(baseY, 250)
+            if (refreshPending) scheduleRefresh()   // 답장하는 동안 미뤄둔 새 알림 반영
         }
     }
 
@@ -156,27 +167,34 @@ class PanelDialog(
         override fun run() {
             if (!keyboardWatch || closing) return
             val a11y = ctx as? A11yService ?: A11yService.instance
-            val imeTop = a11y?.imeTop()
-                ?: (screenH * 0.58f).toInt()                 // 못 읽으면 키보드 높이 추정
-            if (imeTop != lastImeTop) {
-                lastImeTop = imeTop
-                val h = window?.attributes?.height ?: 0
-                val want = (imeTop - dp(8) - h).coerceAtLeast(dp(30))
-                slideWindowTo(minOf(baseY, want))
+            if (a11y != null) {
+                val imeTop = a11y.imeTop()
+                if (imeTop != null) {
+                    imeSeen = true
+                    cachedImeHeight = screenH - imeTop
+                    val want = targetYFor(imeTop)
+                    val cur = window?.attributes?.y ?: want
+                    // 예상과 실제가 다를 때만 살짝 보정
+                    if (kotlin.math.abs(cur - want) > dp(6) && posAnim?.isRunning != true) slideWindowTo(want, 160)
+                } else if (imeSeen) {
+                    // 키보드만 닫힘 → 입력칸을 버튼으로 되돌리고 패널도 내려감
+                    currentFocus?.clearFocus()
+                    return
+                }
             }
-            main.postDelayed(this, 120)
+            main.postDelayed(this, 80)
         }
     }
 
-    /** 창 위치만(크기는 그대로) 짧게 미끄러뜨림 → 크기 변경이 아니라 가벼움 */
-    private fun slideWindowTo(y: Int) {
+    /** 창 위치만(크기는 그대로) 이동 → 가벼움 */
+    private fun slideWindowTo(y: Int, ms: Long) {
         val w = window ?: return
         val from = w.attributes.y
-        if (from == y) return
         posAnim?.cancel()
+        if (from == y) return
         posAnim = ValueAnimator.ofInt(from, y).apply {
-            duration = 220
-            interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+            duration = ms
+            interpolator = imeInterp
             addUpdateListener {
                 val lp = w.attributes
                 lp.y = it.animatedValue as Int
@@ -719,7 +737,7 @@ class PanelDialog(
     private fun scheduleRefresh() {
         main.removeCallbacks(refreshRunnable)
         // 밀거나 끄는 중에는 목록을 건드리지 않고 손 뗀 뒤에 반영
-        if (swiping || touching) { refreshPending = true; return }
+        if (swiping || touching || keyboardWatch) { refreshPending = true; return }
         refreshPending = false
         main.postDelayed(refreshRunnable, 250)
     }
@@ -788,5 +806,7 @@ class PanelDialog(
 
     companion object {
         const val STACK_STEP_DP = 8
+        /** 마지막으로 잰 키보드 높이 (다음에 키보드와 동시에 움직일 때 사용) */
+        var cachedImeHeight = 0
     }
 }
