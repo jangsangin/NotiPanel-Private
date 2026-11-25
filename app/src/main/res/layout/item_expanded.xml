@@ -87,51 +87,6 @@
         android:scaleType="fitStart"
         android:visibility="gone" />
 
-    <!-- 버튼 줄 ↔ 답장 입력칸이 같은 자리에서 바뀜 -->
-    <FrameLayout
-        android:id="@+id/actionArea"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-       >
-
-        <LinearLayout
-            android:id="@+id/actions"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal" />
-
-        <LinearLayout
-            android:id="@+id/replyRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/pill_bg"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:visibility="gone">
-            <EditText
-                android:id="@+id/replyInput"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@null"
-                android:hint="답장 입력"
-                android:imeOptions="actionSend"
-                android:inputType="text"
-                android:minHeight="40dp"
-                android:textSize="14sp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#99FFFFFF" />
-            <TextView
-                android:id="@+id/replySend"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="보내기"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-        </LinearLayout>
-    </FrameLayout>
+    <!-- 버튼 줄 ↔ 답장 입력칸 (공용) -->
+    <include layout="@layout/reply_area" />
 </LinearLayout>

@@ -190,10 +190,7 @@ class NotiAdapter(
         private val titleV: TextView = v.findViewById(R.id.title)
         private val messagesV: LinearLayout = v.findViewById(R.id.messages)
         private val pictureV: ImageView = v.findViewById(R.id.picture)
-        private val actionsV: LinearLayout = v.findViewById(R.id.actions)
-        private val replyRow: View = v.findViewById(R.id.replyRow)
-        private val replyInput: EditText = v.findViewById(R.id.replyInput)
-        private val replySend: View = v.findViewById(R.id.replySend)
+        private val replyBox = ReplyBox(v)
 
         init {
             round(icon); round(appIconV)
@@ -248,38 +245,70 @@ class NotiAdapter(
             pictureV.setImageBitmap(pic)
 
             // 버튼 줄: 답장 · 읽음 등 (답장을 누르면 같은 자리에서 입력칸으로 바뀜)
-            val acts = n.actions ?: emptyArray()
-            val replyAction = acts.firstOrNull { !it.remoteInputs.isNullOrEmpty() }
+            replyBox.bind(n, maxButtons = 3)
+
+            itemView.setOnClickListener { onOpen(sbn) }
+        }
+
+        private fun line(t: CharSequence, size: Float, alpha: Float, maxLines: Int = 4, top: Int = dp(2)) =
+            TextView(ctx).apply {
+                text = t
+                textSize = size
+                setTextColor(Color.argb((alpha * 255).toInt(), 255, 255, 255))
+                this.maxLines = maxLines
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setLineSpacing(0f, 1.15f)
+                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = top }
+            }
+    }
+
+    // ───────── 버튼 줄 ↔ 답장 입력칸 (펼친 카드·접힌 카드 공용) ─────────
+    inner class ReplyBox(private val card: View) {
+        private val area: View = card.findViewById(R.id.actionArea)
+        private val actionsV: LinearLayout = card.findViewById(R.id.actions)
+        private val replyRow: View = card.findViewById(R.id.replyRow)
+        private val replyInput: EditText = card.findViewById(R.id.replyInput)
+        private val replySend: View = card.findViewById(R.id.replySend)
+        private val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        private var replyOpen = false
+
+        fun hide() {
+            reset()
+            area.visibility = View.GONE
+        }
+
+        private fun reset() {
+            if (replyOpen) closeReply()
             replyOpen = false
             actionsV.animate().cancel(); replyRow.animate().cancel()
             replyRow.visibility = View.GONE
-            replyRow.alpha = 1f
+            replyRow.alpha = 1f; replyRow.scaleX = 1f
             actionsV.alpha = 1f
             actionsV.translationX = 0f
+        }
+
+        fun bind(n: Notification, maxButtons: Int) {
+            reset()
+            val acts = n.actions ?: emptyArray()
+            val replyAction = acts.firstOrNull { !it.remoteInputs.isNullOrEmpty() }
+            // 답장 버튼을 항상 맨 앞에
+            val ordered = (listOfNotNull(replyAction) + acts.filter { it !== replyAction }).take(maxButtons)
             actionsV.removeAllViews()
-            val shown = acts.take(3)
-            shown.forEach { a ->
+            ordered.forEach { a ->
                 val b = TextView(ctx).apply {
                     text = a.title
                     setTextColor(Color.WHITE)
                     textSize = 13f
                     setBackgroundResource(R.drawable.pill_bg)
                     setPadding(dp(16), dp(7), dp(16), dp(7))
-                    setOnClickListener {
-                        if (a === replyAction) openReply(a) else onAction(a)
-                    }
+                    setOnClickListener { if (a === replyAction) openReply(a) else onAction(a) }
                 }
                 val lp = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }
                 actionsV.addView(b, lp)
             }
-            actionsV.visibility = if (shown.isEmpty()) View.GONE else View.VISIBLE
-
-            itemView.setOnClickListener { onOpen(sbn) }
+            actionsV.visibility = View.VISIBLE
+            area.visibility = if (ordered.isEmpty()) View.GONE else View.VISIBLE
         }
-
-        private val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-
-        private var replyOpen = false
 
         /** 답장 버튼 → 버튼 줄이 사라지며 입력칸이 나타나고 키보드 올라옴 */
         private fun openReply(a: Notification.Action) {
@@ -290,11 +319,10 @@ class NotiAdapter(
             replyInput.setText("")
             val interp = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
 
-            // 진행 중이던 애니메이션 정리
             actionsV.animate().cancel(); replyRow.animate().cancel()
             actionsV.animate().alpha(0f).translationX(-dp(12).toFloat()).setStartDelay(0).setDuration(150)
                 .withEndAction {
-                    if (replyOpen) actionsV.visibility = View.INVISIBLE   // 그새 닫혔으면 건드리지 않음
+                    if (replyOpen) actionsV.visibility = View.INVISIBLE
                     actionsV.translationX = 0f
                 }.start()
             replyRow.visibility = View.VISIBLE
@@ -322,7 +350,6 @@ class NotiAdapter(
             replyInput.setOnEditorActionListener { _, id, _ ->
                 if (id == EditorInfo.IME_ACTION_SEND) { send(); true } else false
             }
-            // 포커스가 빠지면(키보드 닫힘·다른 곳 터치) 버튼으로 복귀
             replyInput.post {
                 replyInput.setOnFocusChangeListener { _, has -> if (!has) closeReply() }
             }
@@ -335,10 +362,9 @@ class NotiAdapter(
             replyInput.setOnFocusChangeListener(null)
             imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
             onReplyOpen(false)
-            // 포커스를 입력칸이 아닌 카드 자체로 옮김 (입력칸으로 다시 돌아가 키보드가 깜빡이지 않게)
-            itemView.isFocusableInTouchMode = true
-            itemView.requestFocus()
-            itemView.isFocusableInTouchMode = false
+            card.isFocusableInTouchMode = true
+            card.requestFocus()
+            card.isFocusableInTouchMode = false
 
             actionsV.animate().cancel(); replyRow.animate().cancel()
             replyRow.animate().alpha(0f).scaleX(0.95f).setStartDelay(0).setDuration(150)
@@ -350,17 +376,6 @@ class NotiAdapter(
             actionsV.alpha = 0f
             actionsV.animate().alpha(1f).setStartDelay(60).setDuration(200).start()
         }
-
-        private fun line(t: CharSequence, size: Float, alpha: Float, maxLines: Int = 4, top: Int = dp(2)) =
-            TextView(ctx).apply {
-                text = t
-                textSize = size
-                setTextColor(Color.argb((alpha * 255).toInt(), 255, 255, 255))
-                this.maxLines = maxLines
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setLineSpacing(0f, 1.15f)
-                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = top }
-            }
     }
 
     // ───────── 아래 접힌 카드 ─────────
@@ -370,6 +385,7 @@ class NotiAdapter(
         private val line1: TextView = v.findViewById(R.id.line1)
         private val line2: TextView = v.findViewById(R.id.line2)
         private val timeV: TextView = v.findViewById(R.id.time)
+        private val replyBox = ReplyBox(v)
 
         init {
             icon.outlineProvider = object : ViewOutlineProvider() {
@@ -401,6 +417,9 @@ class NotiAdapter(
                 line2.text = t
             }
             line2.visibility = if (line2.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+            // 답장 가능한 채팅 알림이면 접힌 카드에도 '답장' 버튼
+            val canReply = n.actions?.any { !it.remoteInputs.isNullOrEmpty() } == true
+            if (canReply) replyBox.bind(n, maxButtons = 2) else replyBox.hide()
             itemView.setOnClickListener { onOpen(sbn) }
         }
 
