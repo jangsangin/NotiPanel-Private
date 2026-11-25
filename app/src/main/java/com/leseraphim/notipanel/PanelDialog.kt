@@ -632,7 +632,7 @@ class PanelDialog(
         var secondBottom = -1f
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
-            if (list.getChildAdapterPosition(c) == STACK_FROM - 1) secondBottom = c.bottom.toFloat()
+            if (STACK_FROM != Int.MAX_VALUE && list.getChildAdapterPosition(c) == STACK_FROM - 1) secondBottom = c.bottom.toFloat()
         }
         // 쌓이기 시작하는 선: 두 번째 카드 아래
         val limit = maxOf(secondBottom, floor - step * 3)
@@ -911,8 +911,8 @@ class PanelDialog(
 
     companion object {
         const val STACK_STEP_DP = 8
-        /** 이 순번부터 아래로 쌓임 (앞 3장은 겹치지 않음) */
-        const val STACK_FROM = 3
+        /** 카드 쌓기 끔: 모든 카드가 제 간격대로 (넘치는 카드는 X 뒤로 블러되며 이어짐) */
+        const val STACK_FROM = Int.MAX_VALUE
         /** 마지막으로 잰 키보드 높이 (다음에 키보드와 동시에 움직일 때 사용) */
         var cachedImeHeight = 0
     }
