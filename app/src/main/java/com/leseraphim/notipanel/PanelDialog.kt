@@ -78,6 +78,7 @@ class PanelDialog(
         content = LayoutInflater.from(ctx).inflate(R.layout.panel, root, false)
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        setCanceledOnTouchOutside(false)
         setupList()
         setupWindow()
     }
@@ -297,12 +298,12 @@ class PanelDialog(
         d.pivotX = (right - left).toFloat()
         d.pivotY = (anchorY - (window?.attributes?.y ?: top)).toFloat().coerceIn(0f, h)
         d.animate().scaleX(0.2f).scaleY(0.2f).alpha(0f)
-            .setDuration(260).setInterpolator(PathInterpolator(0.4f, 0f, 0.8f, 0.4f))
+            .setDuration(340).setInterpolator(PathInterpolator(0.4f, 0f, 0.8f, 0.4f))
             .withLayer()
             .withEndAction { dismissNow() }
             .start()
         val cur = if (blurOk) blurRadius else 0
-        animateBlur(cur, 0, 240)
+        animateBlur(cur, 0, 320)
     }
 
     fun dismissNow() {
@@ -325,6 +326,10 @@ class PanelDialog(
 
     // 패널 바깥을 누르면 닫기
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_DOWN) {
+            val d = window?.decorView
+            if (d != null && (event.x < 0 || event.y < 0 || event.x > d.width || event.y > d.height)) return true
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             val d = window?.decorView ?: return false
             val x = event.x.toInt()
