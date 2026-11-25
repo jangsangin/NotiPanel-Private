@@ -339,6 +339,7 @@ class PanelDialog(
      * 아래 끝은 고정, 위쪽을 맞춘다. 창 크기는 여기서 한 번만 바뀐다.
      */
     private fun fitHeight(onlyIfChangedBy: Int = 0, growOnly: Boolean = false) {
+        if (keyboardWatch) return   // 답장 중(키보드 위로 옮긴 상태)엔 크기·위치 유지
         val gap = dp(10)
         val first = list.getChildAt(0)
         val second = list.getChildAt(1)
@@ -480,10 +481,17 @@ class PanelDialog(
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
             onToggle = { changed ->
-                // 펼치면 위로 커지고, 접으면(또는 다른 카드를 펼쳐 자동으로 접히면) 크기가 다시 맞춰짐
-                animateChange(allowShrink = true) { changed.forEach { adapter.notifyItemChanged(it) } }
-                val opened = changed.firstOrNull { adapter.isExpanded(it) }
-                if (opened != null) revealCard(opened)
+                val apply = {
+                    // 펼치면 위로 커지고, 접으면(또는 다른 카드를 펼쳐 자동으로 접히면) 크기가 다시 맞춰짐
+                    animateChange(allowShrink = true) { changed.forEach { adapter.notifyItemChanged(it) } }
+                    val opened = changed.firstOrNull { adapter.isExpanded(it) }
+                    if (opened != null) revealCard(opened)
+                }
+                if (keyboardWatch) {
+                    // 답장 중이면: 먼저 답장 닫고 패널이 원래 자리로 돌아온 뒤 펼침/접힘
+                    dropFocus()
+                    main.postDelayed({ apply() }, 300)
+                } else apply()
             }
         )
         list.layoutManager = object : LinearLayoutManager(ctx) {
