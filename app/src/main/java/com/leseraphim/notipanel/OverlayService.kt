@@ -34,7 +34,7 @@ import android.widget.Toast
 class OverlayService : Service() {
 
     companion object {
-        private const val CHANNEL = "overlay"
+        private const val CHANNEL = "status"
         private const val NOTI_ID = 1
 
         /** 설정의 '테스트로 보이기' 버튼용 */
@@ -77,6 +77,7 @@ class OverlayService : Service() {
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
         A11yService.addListener(homeListener)
         A11yService.onConnectionChanged = { rebuildBar(); updateWatcher() }
+        A11yService.pkgListener = { refreshStatus() }
         updateWatcher()
         rebuildBar()
         if (A11yService.instance == null) {
@@ -90,6 +91,7 @@ class OverlayService : Service() {
         instance = null
         A11yService.removeListener(homeListener)
         A11yService.onConnectionChanged = null
+        A11yService.pkgListener = null
         rootWatcher?.stop()
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -102,22 +104,47 @@ class OverlayService : Service() {
     private fun startAsForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "사이드바", NotificationManager.IMPORTANCE_MIN)
+            NotificationChannel(CHANNEL, "사이드바 상태", NotificationManager.IMPORTANCE_LOW)
         )
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, SettingsActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_touch)
-            .setContentTitle("노티패널 실행 중")
-            .setContentIntent(open)
-            .setOngoing(true)
-            .build()
+        val n = buildStatus()
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTI_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTI_ID, n)
         }
+    }
+
+    /** 상단 알림에 지금 감지 상태 표시 */
+    private fun buildStatus(): Notification {
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, SettingsActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        val method = when {
+            A11yService.instance != null -> "접근성 ✓"
+            rootWatcher?.rootOk == true -> "루트 ✓ (키보드 위엔 안 보임)"
+            rootWatcher?.rootOk == false -> "✗ 감지 불가 — 접근성을 켜거나 KernelSU에서 루트 허용"
+            else -> "루트 확인 중…"
+        }
+        val where = if (A11yService.onHome) "홈" else "다른 앱"
+        val bar = if (shown) "보임" else "숨김"
+        return Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_touch)
+            .setContentTitle("노티패널 · 사이드바 $bar")
+            .setContentText("감지: $method")
+            .setStyle(Notification.BigTextStyle().bigText(
+                "감지: $method\n지금 화면: $where (${A11yService.currentPkg()})\n사이드바: $bar"
+            ))
+            .setContentIntent(open)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
+
+    private fun refreshStatus() {
+        getSystemService(NotificationManager::class.java).notify(NOTI_ID, buildStatus())
     }
 
     // ───────── 홈 감지 (접근성 없으면 루트) ─────────
@@ -126,11 +153,12 @@ class OverlayService : Service() {
             if (rootWatcher == null) {
                 rootWatcher = RootHomeWatcher(this) { pkg ->
                     A11yService.reportFromRoot(pkg, rootWatcher?.homePkgs ?: emptySet())
-                }.also { it.start() }
+                }.also { it.onState = { refreshStatus() }; it.start() }
             }
         } else {
             rootWatcher?.stop(); rootWatcher = null
         }
+        refreshStatus()
     }
 
     // ───────── 사이드바 ─────────
@@ -219,6 +247,7 @@ class OverlayService : Service() {
         val bar = barView ?: return
         if (show == shown && root.visibility == (if (show) View.VISIBLE else View.GONE)) return
         shown = show
+        refreshStatus()
         bar.animate().cancel()
         val off = dp(14).toFloat()
         if (show) {

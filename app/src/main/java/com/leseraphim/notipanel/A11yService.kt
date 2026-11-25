@@ -27,7 +27,9 @@ class A11yService : AccessibilityService() {
         fun reportFromRoot(pkg: String, homePkgs: Set<String>) {
             if (instance != null) return
             if (pkg == "com.leseraphim.notipanel" || pkg == "com.android.systemui") return
+            val changedPkg = pkg != rootLastPkg
             rootLastPkg = pkg
+            if (changedPkg) pkgListener?.invoke()
             val home = pkg in homePkgs
             if (home != onHome) {
                 onHome = home
@@ -42,6 +44,11 @@ class A11yService : AccessibilityService() {
         }
 
         private val listeners = mutableSetOf<(Boolean) -> Unit>()
+
+        /** 앞 화면 앱이 바뀔 때 (상태 알림 갱신용) */
+        var pkgListener: (() -> Unit)? = null
+
+        fun currentPkg(): String = instance?.lastPkg ?: rootLastPkg
 
         /** 접근성 켜짐/꺼짐 알림 (터치 아이콘 창을 다시 붙이기 위해) */
         var onConnectionChanged: (() -> Unit)? = null
@@ -101,7 +108,9 @@ class A11yService : AccessibilityService() {
         val pkg = topAppPackage() ?: e.packageName?.toString() ?: return
         if (pkg == packageName || pkg in ignore) return
         if (isIme(pkg)) return
+        val changedPkg = pkg != lastPkg
         lastPkg = pkg
+        if (changedPkg) pkgListener?.invoke()
         if (homePkgs.isEmpty()) homePkgs = findHomePackages()
         val home = pkg in homePkgs
         if (home != onHome) {

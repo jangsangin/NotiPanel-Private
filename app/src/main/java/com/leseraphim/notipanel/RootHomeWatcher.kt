@@ -18,6 +18,10 @@ import kotlin.concurrent.thread
 class RootHomeWatcher(private val ctx: Context, private val onPkg: (String) -> Unit) {
 
     @Volatile private var running = false
+    /** 루트 상태: null=확인 중, true=동작, false=거부됨 */
+    @Volatile var rootOk: Boolean? = null
+        private set
+    var onState: (() -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
 
     val homePkgs: Set<String> by lazy {
@@ -36,9 +40,14 @@ class RootHomeWatcher(private val ctx: Context, private val onPkg: (String) -> U
 
     fun stop() { running = false }
 
+    private fun fail() {
+        rootOk = false
+        main.post { onState?.invoke() }
+    }
+
     private fun loop() {
         val p = runCatching { ProcessBuilder("su").redirectErrorStream(true).start() }.getOrNull()
-        if (p == null) { running = false; return }
+        if (p == null) { running = false; fail(); return }
         val w = OutputStreamWriter(p.outputStream)
         val r = BufferedReader(InputStreamReader(p.inputStream))
         val pm = ctx.getSystemService(PowerManager::class.java)
@@ -54,7 +63,8 @@ class RootHomeWatcher(private val ctx: Context, private val onPkg: (String) -> U
                         if (line == "__END__") break
                         if (pkg == null) pkg = re.find(line!!)?.groupValues?.get(1)
                     }
-                    if (line == null) break   // su 종료됨
+                    if (line == null) { fail(); break }   // su 거부/종료
+                    if (rootOk != true) { rootOk = true; main.post { onState?.invoke() } }
                     pkg?.let { main.post { onPkg(it) } }
                 }
                 Thread.sleep(800)
