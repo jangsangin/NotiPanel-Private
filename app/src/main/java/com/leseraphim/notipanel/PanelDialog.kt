@@ -175,11 +175,12 @@ class PanelDialog(
         val gap = dp(10)
         val first = list.getChildAt(0)
         val second = list.getChildAt(1)
-        val hasMore = adapter.itemCount > 2
+        // 뒤에 쌓이는 카드 수만큼만 여유를 둠 (X 버튼과 간격 최소화)
+        val stacked = (adapter.itemCount - 2).coerceIn(0, 3)
         val need = if (first == null) dp(200) else
             list.paddingTop + first.height + gap +
                 (second?.let { it.height + gap } ?: 0) +
-                (if (hasMore) dp(STACK_PEEK_DP) else 0) +
+                (if (stacked > 0) dp(stacked * 9) else 0) +
                 list.paddingBottom
         val h = need.coerceIn(dp(180), maxHeight())
         top = bottom - h
@@ -479,6 +480,5 @@ class PanelDialog(
 
     companion object {
         const val STACK_STEP_DP = 8
-        const val STACK_PEEK_DP = 26
     }
 }
