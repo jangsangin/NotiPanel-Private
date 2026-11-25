@@ -172,7 +172,7 @@ class PanelDialog(
      * 패널 높이를 내용에 맞춤: 첫 알림 전체 + 두 번째 알림 + 뒤에 쌓인 카드 여유 + X 버튼.
      * 아래 끝은 고정, 위쪽을 맞춘다. 창 크기는 여기서 한 번만 바뀐다.
      */
-    private fun fitHeight() {
+    private fun fitHeight(onlyIfChangedBy: Int = 0) {
         val gap = dp(10)
         val first = list.getChildAt(0)
         val second = list.getChildAt(1)
@@ -194,6 +194,7 @@ class PanelDialog(
                 (if (stacked > 0) dp(stacked * 9) else 0) +
                 dp(20) + list.paddingBottom
         val h = need.coerceIn(dp(180), maxHeight())
+        if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
         top = bottom - h
         placeWindow(top, h)
     }
@@ -306,8 +307,16 @@ class PanelDialog(
             }
 
             override fun onSwiped(vh: RecyclerView.ViewHolder, dir: Int) {
-                val g = adapter.groups.getOrNull(vh.bindingAdapterPosition) ?: return
+                val pos = vh.bindingAdapterPosition
+                val g = adapter.groups.getOrNull(pos) ?: return
+                animateChange { adapter.removeAt(pos) }
                 NotificationStore.dismissMany(g.items.filter { it.isClearable })
+            }
+
+            override fun onSelectedChanged(vh: RecyclerView.ViewHolder?, state: Int) {
+                super.onSelectedChanged(vh, state)
+                swiping = state == ItemTouchHelper.ACTION_STATE_SWIPE
+                if (!swiping && refreshPending) scheduleRefresh()
             }
         }).attachToRecyclerView(list)
 
@@ -324,9 +333,23 @@ class PanelDialog(
         var pull = 0f
         var spring: androidx.dynamicanimation.animation.SpringAnimation? = null
         val maxPull = 160 * density
+        // 카드가 터치를 먼저 받아도 손가락 위치/누름 상태는 항상 기록
+        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel(); touching = true }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        touching = false
+                        if (refreshPending) scheduleRefresh()
+                    }
+                    MotionEvent.ACTION_MOVE -> if (pull == 0f) lastY = e.rawY
+                }
+                return false
+            }
+        })
         list.setOnTouchListener { _, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel() }
+                MotionEvent.ACTION_DOWN -> { lastY = e.rawY; spring?.cancel(); touching = true }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = e.rawY - lastY
                     lastY = e.rawY
@@ -344,6 +367,8 @@ class PanelDialog(
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    touching = false
+                    if (refreshPending) scheduleRefresh()
                     if (pull != 0f) {
                         pull = 0f
                         spring = androidx.dynamicanimation.animation.SpringAnimation(
@@ -416,7 +441,7 @@ class PanelDialog(
                 c.scaleY = c.scaleX
                 c.alpha = (1f - (depth - 2f).coerceAtLeast(0f)).coerceIn(0f, 1f) * 0.95f
                 c.translationZ = -depth
-                setBlur(c, (dd * 6).toInt().coerceIn(4, 18))
+                setBlur(c, (dd * 8).toInt().coerceIn(10, 28))
             } else if (c.top < 0) {
                 val p = (-c.top / h).coerceIn(0f, 1f)
                 c.translationY = 0f
@@ -430,12 +455,87 @@ class PanelDialog(
                 c.alpha = 1f
                 c.translationZ = 0f
                 // X 버튼 뒤로 지나가는 카드(첫 카드 제외)는 블러
-                setBlur(c, if (pos >= 1 && c.bottom > xTop) 12 else 0)
+                setBlur(c, if (pos >= 1 && c.bottom > xTop) 28 else 0)
             }
             val (off, a) = enterOffset(i)
             c.translationY += off
             c.alpha *= a
+
+            // 목록이 바뀐 직후: 예전 자리에서 새 자리로 미끄러지기
+            val id = list.getChildItemId(c)
+            pendingOld?.let { old ->
+                val now = c.top + c.translationY
+                moveDelta[id] = (old[id] ?: (now + 40 * density)) - now
+                if (old[id] == null) newIds += id
+            }
+            val dlt = moveDelta[id]
+            if (dlt != null && moveT < 1f) {
+                val k = 1f - moveInterp.getInterpolation(moveT)
+                c.translationY += dlt * k
+                if (id in newIds) c.alpha *= 1f - k
+            }
         }
+        if (pendingOld != null) {
+            pendingOld = null
+            startMove()
+        }
+    }
+
+    // ───────── 목록 변경 애니메이션 ─────────
+    private var pendingOld: Map<Long, Float>? = null
+    private val moveDelta = HashMap<Long, Float>()
+    private val newIds = HashSet<Long>()
+    private var moveT = 1f
+    private val moveInterp = PathInterpolator(0.2f, 0f, 0f, 1f)
+    private var moveAnim: ValueAnimator? = null
+
+    /** 지금 카드 위치를 기억하고 목록을 바꾼 뒤, 다음 화면에서 예전 위치→새 위치로 미끄러지게 */
+    private fun animateChange(change: () -> Unit) {
+        val old = HashMap<Long, Float>()
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            old[list.getChildItemId(c)] = c.top + c.translationY
+        }
+        moveDelta.clear(); newIds.clear()
+        pendingOld = old
+        change()
+        refitAfterLayout()
+    }
+
+    private fun startMove() {
+        moveAnim?.cancel()
+        moveT = 0f
+        moveAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 300
+            addUpdateListener { moveT = it.animatedValue as Float; list.invalidate() }
+            start()
+        }
+    }
+
+    /** 맨 위 알림이 바뀌면 패널 높이 다시 맞추기 (창 크기는 한 번만, 내용은 스프링으로 따라감) */
+    private fun refitAfterLayout() {
+        list.viewTreeObserver.addOnGlobalLayoutListener(object :
+            android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                list.post {
+                    val oldTop = top
+                    fitHeight(onlyIfChangedBy = dp(6))
+                    val shift = (oldTop - top).toFloat()   // 위로 커지면 +
+                    if (shift != 0f) {
+                        // 창이 바뀐 만큼 내용이 튀지 않게 잠깐 반대로 밀어뒀다가 스프링으로 제자리
+                        list.translationY += shift
+                        androidx.dynamicanimation.animation.SpringAnimation(
+                            list, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f
+                        ).apply {
+                            this.spring.stiffness = androidx.dynamicanimation.animation.SpringForce.STIFFNESS_MEDIUM
+                            this.spring.dampingRatio = 0.85f
+                            start()
+                        }
+                    }
+                }
+            }
+        })
     }
 
     /** 카드 블러 (값이 바뀔 때만 다시 설정해서 부담 줄임) */
@@ -474,9 +574,16 @@ class PanelDialog(
     private var lastSig = ""
     private val refreshRunnable = Runnable { refreshNow() }
 
+    private var swiping = false
+    private var touching = false
+    private var refreshPending = false
+
     private fun scheduleRefresh() {
         main.removeCallbacks(refreshRunnable)
-        main.postDelayed(refreshRunnable, 400)
+        // 밀거나 끄는 중에는 목록을 건드리지 않고 손 뗀 뒤에 반영
+        if (swiping || touching) { refreshPending = true; return }
+        refreshPending = false
+        main.postDelayed(refreshRunnable, 250)
     }
 
     private fun refreshNow() {
@@ -492,8 +599,10 @@ class PanelDialog(
             "${it.key}:${ex.getCharSequence(Notification.EXTRA_TITLE)}:${ex.getCharSequence(Notification.EXTRA_TEXT)}"
         }
         if (sig == lastSig && adapter.itemCount > 0) return
+        val first = lastSig.isEmpty()
         lastSig = sig
-        adapter.submit(NotiAdapter.group(items))
+        if (first) adapter.submit(NotiAdapter.group(items))
+        else animateChange { adapter.submit(NotiAdapter.group(items)) }
         emptyView.text = "알림이 없어요"
         emptyView.visibility = if (adapter.groups.isEmpty()) View.VISIBLE else View.GONE
     }

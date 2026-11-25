@@ -63,9 +63,38 @@ class NotiAdapter(
 
     init { setHasStableIds(true) }
 
+    /** 바뀐 카드만 골라서 갱신 (전체 다시 그리기 X → 끊김 방지) */
     fun submit(list: List<NotiGroup>) {
+        val old = groups
         groups = list
-        notifyDataSetChanged()
+        if (old.isEmpty() || list.isEmpty()) { notifyDataSetChanged(); return }
+        val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object :
+            androidx.recyclerview.widget.DiffUtil.Callback() {
+            override fun getOldListSize() = old.size
+            override fun getNewListSize() = list.size
+            override fun areItemsTheSame(o: Int, n: Int) = old[o].pkg == list[n].pkg
+            override fun areContentsTheSame(o: Int, n: Int) =
+                o == n && sig(old[o]) == sig(list[n])     // 위치가 바뀌면(펼침↔접힘) 다시 그림
+        }, true)
+        diff.dispatchUpdatesTo(this)
+        // 맨 위(펼친 카드)가 바뀌었으면 0, 1번 모양 다시 맞추기
+        if (old.first().pkg != list.first().pkg) {
+            notifyItemChanged(0)
+            if (list.size > 1) notifyItemChanged(1)
+        }
+    }
+
+    private fun sig(g: NotiGroup) = g.items.joinToString(",") {
+        val ex = it.notification.extras
+        "${it.key}:${it.postTime}:${ex.getCharSequence(Notification.EXTRA_TEXT)}"
+    }
+
+    /** 스와이프로 지운 묶음을 바로 목록에서 빼기 (알림 서버 응답 기다리지 않음) */
+    fun removeAt(pos: Int) {
+        if (pos !in groups.indices) return
+        groups = groups.toMutableList().also { it.removeAt(pos) }
+        notifyItemRemoved(pos)
+        if (pos == 0 && groups.isNotEmpty()) notifyItemChanged(0)
     }
 
     override fun getItemCount() = groups.size
