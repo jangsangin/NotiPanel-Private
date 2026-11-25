@@ -292,13 +292,17 @@ class PanelDialog(
         hideKeyboard()
         val d = window?.decorView ?: return dismissNow()
         d.animate().cancel()
-        d.animate().scaleX(0.92f).scaleY(0.92f).alpha(0f).translationY(dp(16).toFloat())
-            .setDuration(220).setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
+        // 열릴 때의 반대: 사이드바 쪽(오른쪽 아래)으로 접히며 사라짐
+        val h = (window?.attributes?.height ?: (bottom - top)).toFloat()
+        d.pivotX = (right - left).toFloat()
+        d.pivotY = (anchorY - (window?.attributes?.y ?: top)).toFloat().coerceIn(0f, h)
+        d.animate().scaleX(0.2f).scaleY(0.2f).alpha(0f)
+            .setDuration(260).setInterpolator(PathInterpolator(0.4f, 0f, 0.8f, 0.4f))
             .withLayer()
             .withEndAction { dismissNow() }
             .start()
         val cur = if (blurOk) blurRadius else 0
-        animateBlur(cur, 0, 200)
+        animateBlur(cur, 0, 240)
     }
 
     fun dismissNow() {
