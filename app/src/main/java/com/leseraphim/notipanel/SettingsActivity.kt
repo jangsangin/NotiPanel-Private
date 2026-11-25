@@ -111,6 +111,8 @@ class SettingsActivity : AppCompatActivity() {
             ?.contains(a11yCn) == true
         btnA11y.text = if (a11yOk) "접근성: 켜짐 ✓" else "접근성 켜기 (설치된 앱 → 노티패널)"
 
+        findViewById<TextView>(R.id.homeInfo).text = A11yService.status()
+
         swEnable.isChecked = Prefs.enabled(this) && overlayOk
         if (swEnable.isChecked) OverlayService.start(this)
     }

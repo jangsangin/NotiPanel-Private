@@ -20,6 +20,12 @@ class A11yService : AccessibilityService() {
         var onHome = true
             private set
 
+        /** 설정 화면 표시용 */
+        fun status(): String {
+            val i = instance ?: return "접근성 꺼짐 → 항상 아이콘 표시"
+            return "앞 화면: ${i.lastPkg}  /  홈 판정: ${if (onHome) "예" else "아니오"}\n홈 앱: ${i.homePkgs.joinToString()}"
+        }
+
         private val listeners = mutableSetOf<(Boolean) -> Unit>()
         fun addListener(l: (Boolean) -> Unit) { listeners += l }
         fun removeListener(l: (Boolean) -> Unit) { listeners -= l }
@@ -56,17 +62,40 @@ class A11yService : AccessibilityService() {
             .toSet()
     }
 
+    /** 설정 화면 표시용: 마지막으로 감지한 앞 화면 앱 */
+    var lastPkg: String = "-"
+        private set
+
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (e?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg = e.packageName?.toString() ?: return
+        e ?: return
+        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            e.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
+
+        // 1순위: 실제 화면에 떠 있는 맨 위 '앱' 창의 패키지
+        // 2순위: 이벤트를 보낸 패키지
+        val pkg = topAppPackage() ?: e.packageName?.toString() ?: return
         if (pkg == packageName || pkg in ignore) return
         if (isIme(pkg)) return
+        lastPkg = pkg
+        if (homePkgs.isEmpty()) homePkgs = findHomePackages()
         val home = pkg in homePkgs
         if (home != onHome) {
             onHome = home
             listeners.toList().forEach { it(home) }
         }
     }
+
+    private fun topAppPackage(): String? = runCatching {
+        windows
+            .filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .sortedByDescending { it.layer }
+            .firstNotNullOfOrNull { w ->
+                val root = w.root
+                val p = root?.packageName?.toString()
+                @Suppress("DEPRECATION") root?.recycle()
+                p?.takeIf { it != packageName && it !in ignore }
+            }
+    }.getOrNull()
 
     private fun isIme(pkg: String): Boolean {
         val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
