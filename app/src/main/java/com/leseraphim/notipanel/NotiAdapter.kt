@@ -250,9 +250,12 @@ class NotiAdapter(
             // 버튼 줄: 답장 · 읽음 등 (답장을 누르면 같은 자리에서 입력칸으로 바뀜)
             val acts = n.actions ?: emptyArray()
             val replyAction = acts.firstOrNull { !it.remoteInputs.isNullOrEmpty() }
+            replyOpen = false
+            actionsV.animate().cancel(); replyRow.animate().cancel()
             replyRow.visibility = View.GONE
             replyRow.alpha = 1f
             actionsV.alpha = 1f
+            actionsV.translationX = 0f
             actionsV.removeAllViews()
             val shown = acts.take(3)
             shown.forEach { a ->
@@ -276,22 +279,35 @@ class NotiAdapter(
 
         private val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
 
+        private var replyOpen = false
+
         /** 답장 버튼 → 버튼 줄이 사라지며 입력칸이 나타나고 키보드 올라옴 */
         private fun openReply(a: Notification.Action) {
+            if (replyOpen) return
+            replyOpen = true
             val hint = a.remoteInputs?.firstOrNull()?.label?.takeIf { it.isNotBlank() } ?: "답장"
             replyInput.hint = hint
             replyInput.setText("")
             val interp = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-            actionsV.animate().alpha(0f).translationX(-dp(12).toFloat()).setDuration(150)
-                .withEndAction { actionsV.visibility = View.INVISIBLE; actionsV.translationX = 0f }.start()
+
+            // 진행 중이던 애니메이션 정리
+            actionsV.animate().cancel(); replyRow.animate().cancel()
+            actionsV.animate().alpha(0f).translationX(-dp(12).toFloat()).setStartDelay(0).setDuration(150)
+                .withEndAction {
+                    if (replyOpen) actionsV.visibility = View.INVISIBLE   // 그새 닫혔으면 건드리지 않음
+                    actionsV.translationX = 0f
+                }.start()
             replyRow.visibility = View.VISIBLE
             replyRow.alpha = 0f
             replyRow.scaleX = 0.92f
             replyRow.pivotX = 0f
-            replyRow.animate().alpha(1f).scaleX(1f).setStartDelay(80).setDuration(260)
+            replyRow.animate().alpha(1f).scaleX(1f).setStartDelay(60).setDuration(240)
                 .setInterpolator(interp).start()
+
+            replyInput.setOnFocusChangeListener(null)
             replyInput.requestFocus()
-            replyInput.postDelayed({ imm.showSoftInput(replyInput, 0) }, 120)
+            imm.showSoftInput(replyInput, 0)
+            replyInput.postDelayed({ if (replyOpen) imm.showSoftInput(replyInput, 0) }, 80)
             onReplyOpen(true)
 
             val send = {
@@ -306,18 +322,31 @@ class NotiAdapter(
             replyInput.setOnEditorActionListener { _, id, _ ->
                 if (id == EditorInfo.IME_ACTION_SEND) { send(); true } else false
             }
-            // 키보드를 내리거나 다른 곳을 눌러 포커스가 빠지면 버튼으로 복귀
-            replyInput.setOnFocusChangeListener { _, has -> if (!has) closeReply() }
+            // 포커스가 빠지면(키보드 닫힘·다른 곳 터치) 버튼으로 복귀
+            replyInput.post {
+                replyInput.setOnFocusChangeListener { _, has -> if (!has) closeReply() }
+            }
         }
 
         /** 입력칸 → 다시 버튼 줄 */
         fun closeReply() {
-            if (replyRow.visibility != View.VISIBLE) return
+            if (!replyOpen) return
+            replyOpen = false
+            replyInput.setOnFocusChangeListener(null)
             imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
             onReplyOpen(false)
+            // 포커스를 입력칸이 아닌 카드 자체로 옮김 (입력칸으로 다시 돌아가 키보드가 깜빡이지 않게)
+            itemView.isFocusableInTouchMode = true
+            itemView.requestFocus()
+            itemView.isFocusableInTouchMode = false
+
+            actionsV.animate().cancel(); replyRow.animate().cancel()
             replyRow.animate().alpha(0f).scaleX(0.95f).setStartDelay(0).setDuration(150)
-                .withEndAction { replyRow.visibility = View.GONE; replyRow.scaleX = 1f }.start()
+                .withEndAction {
+                    if (!replyOpen) { replyRow.visibility = View.GONE; replyRow.scaleX = 1f }
+                }.start()
             actionsV.visibility = View.VISIBLE
+            actionsV.translationX = 0f
             actionsV.alpha = 0f
             actionsV.animate().alpha(1f).setStartDelay(60).setDuration(200).start()
         }

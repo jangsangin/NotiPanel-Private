@@ -153,6 +153,7 @@ class PanelDialog(
         main.removeCallbacks(keyboardTick)
         if (on) {
             imeSeen = false
+            lastIme = 0
             watchStart = android.os.SystemClock.uptimeMillis()
             // 지난번에 잰 키보드 높이로 바로 출발 (키보드와 동시에)
             slideWindowTo(targetYFor(screenH - cachedImeHeight), 285)
@@ -178,7 +179,7 @@ class PanelDialog(
                     if (kotlin.math.abs(cur - want) > dp(6) && posAnim?.isRunning != true) slideWindowTo(want, 160)
                 } else if (imeSeen) {
                     // 키보드만 닫힘 → 입력칸을 버튼으로 되돌리고 패널도 내려감
-                    currentFocus?.clearFocus()
+                    dropFocus()
                     return
                 }
             }
@@ -204,10 +205,19 @@ class PanelDialog(
         }
     }
 
+    /** 입력칸에서 포커스 빼기 (입력칸으로 다시 돌아가지 않도록 목록에 포커스를 줌) */
+    private fun dropFocus() {
+        if (currentFocus !is android.widget.EditText) return
+        list.isFocusableInTouchMode = true
+        list.requestFocus()
+        list.isFocusableInTouchMode = false
+    }
+
     private var imeShift = 0
     private var lastIme = 0
     private fun moveAboveKeyboard(ime: Int) {
-        if (lastIme > 0 && ime == 0) currentFocus?.clearFocus()
+        // 접근성이 있으면 키보드 추적은 그쪽이 담당 (여기선 접근성 없을 때만)
+        if (A11yService.instance == null && keyboardWatch && lastIme > 0 && ime == 0) dropFocus()
         lastIme = ime
         if (keyboardWatch) return   // 직접 추적 중이면 그쪽이 담당
         val w = window ?: return
@@ -354,7 +364,7 @@ class PanelDialog(
             val x = event.x.toInt()
             val y = event.y.toInt()
             if (x < 0 || y < 0 || x > d.width || y > d.height) {
-                if (keyboardWatch) { currentFocus?.clearFocus(); return true }   // 답장 중이면 입력만 닫기
+                if (keyboardWatch) { dropFocus(); return true }   // 답장 중이면 입력만 닫기
                 closeAnimated("패널 바깥 터치")
                 return true
             }
@@ -366,7 +376,7 @@ class PanelDialog(
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (keyboardWatch || currentFocus is android.widget.EditText) {
-            currentFocus?.clearFocus()
+            dropFocus()
             return
         }
         closeAnimated("뒤로가기")
@@ -793,7 +803,7 @@ class PanelDialog(
     private fun hideKeyboard() {
         val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
         window?.decorView?.let { imm.hideSoftInputFromWindow(it.windowToken, 0) }
-        currentFocus?.clearFocus()
+        dropFocus()
     }
 
     private fun openNotification(sbn: StatusBarNotification) {
