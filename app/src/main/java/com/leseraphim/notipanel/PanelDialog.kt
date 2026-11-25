@@ -470,6 +470,14 @@ class PanelDialog(
         )
         list.layoutManager = object : LinearLayoutManager(ctx) {
             override fun canScrollVertically() = !horizontalLock && super.canScrollVertically()
+
+            // 패널 아래로 넘친 카드도 미리 만들어 둠 → 처음 열 때부터 X 줄에 쌓인 모습이 보임
+            override fun calculateExtraLayoutSpace(
+                state: RecyclerView.State, extraLayoutSpace: IntArray
+            ) {
+                super.calculateExtraLayoutSpace(state, extraLayoutSpace)
+                extraLayoutSpace[1] = maxOf(extraLayoutSpace[1], (260 * density).toInt())
+            }
         }
         list.adapter = adapter
         list.itemAnimator = null
