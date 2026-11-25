@@ -246,48 +246,77 @@ class NotiAdapter(
             pictureV.visibility = if (pic != null) View.VISIBLE else View.GONE
             pictureV.setImageBitmap(pic)
 
-            // 답장 가능한 알림(카톡·문자 등)은 입력칸을 바로 보여줌
+            // 버튼 줄: 답장 · 읽음 등 (답장을 누르면 같은 자리에서 입력칸으로 바뀜)
             val acts = n.actions ?: emptyArray()
             val replyAction = acts.firstOrNull { !it.remoteInputs.isNullOrEmpty() }
-            if (replyAction != null) setupReply(replyAction) else replyRow.visibility = View.GONE
-
-            // 나머지 버튼들 (읽음 등)
+            replyRow.visibility = View.GONE
+            replyRow.alpha = 1f
+            actionsV.alpha = 1f
             actionsV.removeAllViews()
-            val others = acts.filter { it !== replyAction }.take(3)
-            others.forEach { a ->
+            val shown = acts.take(3)
+            shown.forEach { a ->
                 val b = TextView(ctx).apply {
                     text = a.title
                     setTextColor(Color.WHITE)
                     textSize = 13f
                     setBackgroundResource(R.drawable.pill_bg)
                     setPadding(dp(16), dp(7), dp(16), dp(7))
-                    setOnClickListener { onAction(a) }
+                    setOnClickListener {
+                        if (a === replyAction) openReply(a) else onAction(a)
+                    }
                 }
                 val lp = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }
                 actionsV.addView(b, lp)
             }
-            actionsV.visibility = if (others.isEmpty()) View.GONE else View.VISIBLE
+            actionsV.visibility = if (shown.isEmpty()) View.GONE else View.VISIBLE
 
             itemView.setOnClickListener { onOpen(sbn) }
         }
 
-        private fun setupReply(a: Notification.Action) {
-            replyRow.visibility = View.VISIBLE
-            val hint = a.remoteInputs?.firstOrNull()?.label?.takeIf { it.isNotBlank() } ?: "답장 보내기"
+        private val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+
+        /** 답장 버튼 → 버튼 줄이 사라지며 입력칸이 나타나고 키보드 올라옴 */
+        private fun openReply(a: Notification.Action) {
+            val hint = a.remoteInputs?.firstOrNull()?.label?.takeIf { it.isNotBlank() } ?: "답장"
             replyInput.hint = hint
-            val imm = ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            replyInput.setText("")
+            val interp = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+            actionsV.animate().alpha(0f).translationX(-dp(12).toFloat()).setDuration(150)
+                .withEndAction { actionsV.visibility = View.INVISIBLE; actionsV.translationX = 0f }.start()
+            replyRow.visibility = View.VISIBLE
+            replyRow.alpha = 0f
+            replyRow.scaleX = 0.92f
+            replyRow.pivotX = 0f
+            replyRow.animate().alpha(1f).scaleX(1f).setStartDelay(80).setDuration(260)
+                .setInterpolator(interp).start()
+            replyInput.requestFocus()
+            replyInput.postDelayed({ imm.showSoftInput(replyInput, 0) }, 120)
+
             val send = {
                 val t = replyInput.text
                 if (!t.isNullOrBlank()) {
                     onReply(a, t.toString())
                     replyInput.setText("")
-                    imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
+                    closeReply()
                 }
             }
             replySend.setOnClickListener { send() }
             replyInput.setOnEditorActionListener { _, id, _ ->
                 if (id == EditorInfo.IME_ACTION_SEND) { send(); true } else false
             }
+            // 키보드를 내리거나 다른 곳을 눌러 포커스가 빠지면 버튼으로 복귀
+            replyInput.setOnFocusChangeListener { _, has -> if (!has) closeReply() }
+        }
+
+        /** 입력칸 → 다시 버튼 줄 */
+        fun closeReply() {
+            if (replyRow.visibility != View.VISIBLE) return
+            imm.hideSoftInputFromWindow(replyInput.windowToken, 0)
+            replyRow.animate().alpha(0f).scaleX(0.95f).setStartDelay(0).setDuration(150)
+                .withEndAction { replyRow.visibility = View.GONE; replyRow.scaleX = 1f }.start()
+            actionsV.visibility = View.VISIBLE
+            actionsV.alpha = 0f
+            actionsV.animate().alpha(1f).setStartDelay(60).setDuration(200).start()
         }
 
         private fun line(t: CharSequence, size: Float, alpha: Float, maxLines: Int = 4, top: Int = dp(2)) =

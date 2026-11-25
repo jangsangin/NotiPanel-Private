@@ -134,7 +134,10 @@ class PanelDialog(
     }
 
     private var imeShift = 0
+    private var lastIme = 0
     private fun moveAboveKeyboard(ime: Int) {
+        if (lastIme > 0 && ime == 0) currentFocus?.clearFocus()
+        lastIme = ime
         val w = window ?: return
         val h = w.attributes.height
         val wantBottom = if (ime > 0) screenH - ime - dp(8) else bottom
