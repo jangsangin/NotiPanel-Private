@@ -38,7 +38,9 @@ class PanelDialog(
     private val anchorY: Int,      // 사이드바 중앙 높이 (펼쳐지는 기준점)
     private val barBottom: Int,    // 패널 아래 끝 위치 (고정)
     private val blurRadius: Int,
-    private val anchorX: Int = -1      // 펼쳐지는 기준 가로 위치 (사이드바/버튼)
+    private val anchorX: Int = -1,     // 펼쳐지는 기준 가로 위치 (사이드바/버튼)
+    private val shot: android.graphics.Bitmap? = null,   // 열 때 찍은 뒤 화면 (뿌옇게 깔 배경)
+    private val clearness: Int = 40    // 패널 투명도 0~100 (높을수록 뒤가 잘 비침)
 ) : Dialog(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar) {
 
     private val density = ctx.resources.displayMetrics.density
@@ -52,6 +54,8 @@ class PanelDialog(
     private lateinit var adapter: NotiAdapter
     private lateinit var emptyView: TextView
     private lateinit var focusSink: View
+    private val useShot: Boolean
+    private var shotView: android.widget.ImageView? = null
 
     private var closing = false
     private var blurAnim: ValueAnimator? = null
@@ -75,9 +79,38 @@ class PanelDialog(
         bottom = barBottom
         top = bottom - maxHeight()
         if (cachedImeHeight <= 0) cachedImeHeight = (screenH * 0.42f).toInt()
-        blurOk = Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
+        useShot = shot != null && Build.VERSION.SDK_INT >= 31
+        blurOk = !useShot && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
 
         val root = FrameLayout(ctx)
+        // 둥근 패널 모양으로 안쪽 전부 자르기
+        root.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, o: android.graphics.Outline) =
+                o.setRoundRect(0, 0, v.width, v.height, corner)
+        }
+        root.clipToOutline = true
+        if (useShot) {
+            // 뒤 화면 캡처를 깔고 뿌옇게 → 시스템 블러가 안 돼도 항상 뿌연 유리
+            shotView = android.widget.ImageView(ctx).apply {
+                setImageBitmap(shot)
+                scaleType = android.widget.ImageView.ScaleType.MATRIX
+                if (blurRadius > 0) setRenderEffect(
+                    RenderEffect.createBlurEffect(blurRadius.toFloat(), blurRadius.toFloat(), Shader.TileMode.CLAMP)
+                )
+            }
+            root.addView(shotView, FrameLayout.LayoutParams(screenW, screenH, Gravity.TOP or Gravity.START))
+        }
+        // 색 막: 투명도가 낮을수록 진한 회색이 덮임 + 얇은 빛 테두리
+        val tintA = ((100 - clearness.coerceIn(0, 100)) * 2.3f).toInt()
+        root.addView(View(ctx).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.argb(tintA, 95, 95, 95), Color.argb((tintA + 15).coerceAtMost(255), 55, 55, 55))
+            ).apply {
+                cornerRadius = corner
+                setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(70, 255, 255, 255))
+            }
+        }, FrameLayout.LayoutParams(-1, -1))
         content = LayoutInflater.from(ctx).inflate(R.layout.panel, root, false)
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
         // 입력칸에서 포커스를 뺄 때 받아줄 빈 칸 (목록에 주면 다시 입력칸으로 넘어가 버림)
@@ -117,6 +150,13 @@ class PanelDialog(
     }
 
     /** 기본(최대) 패널 높이: 화면의 61.6% (예전 56%에서 10% 키움) */
+    /** 캡처 배경을 창 위치만큼 반대로 옮겨서, 패널 뒤 화면과 정확히 겹치게 */
+    private fun syncShot(y: Int) {
+        val v = shotView ?: return
+        v.translationX = -left.toFloat()
+        v.translationY = -y.toFloat()
+    }
+
     /** 사이드바/버튼 쪽에서 펼쳐지도록 기준 가로 위치 (기본: 오른쪽 끝) */
     private fun pivotXFor(): Float =
         if (anchorX < 0) (right - left).toFloat()
@@ -141,16 +181,11 @@ class PanelDialog(
         w.setGravity(Gravity.TOP or Gravity.START)
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
 
-        // 유리 패널: 살짝 밝은 위쪽 → 아래 그라데이션 + 얇은 빛 테두리
-        val bg = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            if (blurOk) intArrayOf(Color.argb(70, 120, 120, 120), Color.argb(55, 40, 40, 40))
-            else intArrayOf(Color.argb(225, 105, 105, 105), Color.argb(235, 70, 70, 70))
-        ).apply {
+        // 창 자체는 투명 (뿌연 배경·색 막·테두리는 안쪽 뷰들이 담당)
+        w.setBackgroundDrawable(GradientDrawable().apply {
             cornerRadius = corner
-            setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(70, 255, 255, 255))
-        }
-        w.setBackgroundDrawable(bg)
+            setColor(Color.TRANSPARENT)
+        })
         if (blurOk) w.setBackgroundBlurRadius(0)
         w.decorView.setPadding(0, 0, 0, 0)
         w.decorView.alpha = 0f
@@ -174,6 +209,7 @@ class PanelDialog(
         w.attributes = lp
         baseY = y
         content.requestLayout()
+        syncShot(y)
     }
 
     // ───────── 키보드 따라 패널 올리기 (키보드 애니메이션과 같은 시간·곡선) ─────────
@@ -236,13 +272,17 @@ class PanelDialog(
             main.postDelayed(keyboardTick, 120)
         } else {
             replyAnchor = null
-            if (savedH > 0 && w.attributes.height != savedH) {
+            // 저장해 둔 값 대신 '고정 아래 끝 + 지금 패널 크기'로 정확히 복귀
+            val wantH = bottom - top
+            if (w.attributes.height != wantH) {
                 val lp = w.attributes
-                lp.height = savedH
+                lp.height = wantH
                 w.attributes = lp
+                content.requestLayout()
             }
+            baseY = top
             closeBtn.animate().alpha(1f).setDuration(200).start()
-            slideWindowTo(baseY, 250)
+            slideWindowTo(top, 250)
             if (refreshPending) scheduleRefresh()   // 답장하는 동안 미뤄둔 새 알림 반영
         }
     }
@@ -283,6 +323,7 @@ class PanelDialog(
                 val lp = w.attributes
                 lp.y = it.animatedValue as Int
                 w.attributes = lp
+                syncShot(lp.y)
             }
             start()
         }
@@ -365,7 +406,10 @@ class PanelDialog(
         val h = if (adapter.itemCount >= 3)
             maxOf(threeCardHeight(), firstThreeHeight() ?: 0).coerceAtMost(maxHeight())
         else need.coerceIn(dp(180), maxHeight())
-        if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
+        val curH = window?.attributes?.height ?: (bottom - top)
+        val curY = window?.attributes?.y ?: top
+        if (onlyIfChangedBy > 0 && kotlin.math.abs(h - curH) < onlyIfChangedBy &&
+            kotlin.math.abs((curY + curH) - bottom) < onlyIfChangedBy) return
         if (growOnly && h <= bottom - top) return
         top = bottom - h
         placeWindow(top, h)

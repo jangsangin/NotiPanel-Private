@@ -124,7 +124,10 @@ class SettingsActivity : AppCompatActivity() {
             "노티바 진하기: $it%  (0 = 밝은 유리, 100 = 짙은 회색)"
         }
         bindSlider(R.id.slBlur, R.id.lblBlur, Prefs.KEY_BLUR, Prefs.blur(this)) {
-            "패널 블러 강도: $it"
+            "패널 블러(뿌옇기): $it"
+        }
+        bindSlider(R.id.slClear, R.id.lblClear, Prefs.KEY_CLEAR, Prefs.panelClear(this)) {
+            "패널 투명도: $it%  (높을수록 뒤 화면이 잘 비침)"
         }
 
         findViewById<MaterialButton>(R.id.btnTest).setOnClickListener {

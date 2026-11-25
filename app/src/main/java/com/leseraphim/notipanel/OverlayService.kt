@@ -524,7 +524,7 @@ class OverlayService : Service() {
     private var barDark: Boolean? = null
     private val sampler = object : Runnable {
         override fun run() {
-            if (shown) sampleBackground()
+            if (shown && panel == null && !opening) sampleBackground()   // 패널 열려 있을 땐 캡처 양보
             handler.postDelayed(this, 1500)
         }
     }
@@ -557,8 +557,11 @@ class OverlayService : Service() {
     }
 
     // ───────── 패널 ─────────
+    private var opening = false
+
     private fun openPanel(from: View) {
-        if (panel?.isShowing == true) return
+        if (panel?.isShowing == true || opening) return
+        opening = true
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
         val anchorY = loc[1] + from.height / 2
@@ -566,12 +569,27 @@ class OverlayService : Service() {
         val (_, sh) = screenSize()
         val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
         val host: Context = A11yService.instance ?: this
-        panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this), anchorX).also {
-            it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
-            it.showAnimated()
+        val show = { shot: android.graphics.Bitmap? ->
+            opening = false
+            if (panel?.isShowing != true && shown) {
+                panel = PanelDialog(
+                    host, anchorY, panelBottom, Prefs.blur(this), anchorX, shot, Prefs.panelClear(this)
+                ).also {
+                    it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
+                    it.showAnimated()
+                }
+                // 패널이 열린 동안 상단 배너 끄기 (새 알림은 패널에만)
+                HeadsUp.suppress(this)
+            }
         }
-        // 패널이 열린 동안 상단 배너 끄기 (새 알림은 패널에만)
-        HeadsUp.suppress(this)
+        // 뒤 화면을 먼저 찍어 두고(뿌연 배경용) 패널 열기. 접근성이 없으면 바로 열기
+        val a11y = A11yService.instance
+        if (a11y != null) {
+            var done = false
+            a11y.captureScreen({ bmp -> if (!done) { done = true; show(bmp) } })
+            handler.postDelayed({ if (!done) { done = true; show(null) } }, 450)
+        } else show(null)
     }
+
 
 }

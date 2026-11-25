@@ -203,6 +203,25 @@ class A11yService : AccessibilityService() {
     private val shotExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** 화면 전체 캡처 (패널 배경용). 실패하면 한 번 더 시도 후 null */
+    fun captureScreen(cb: (android.graphics.Bitmap?) -> Unit, retry: Boolean = true) {
+        if (android.os.Build.VERSION.SDK_INT < 30) { cb(null); return }
+        runCatching {
+            takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(r: ScreenshotResult) {
+                        val bmp = android.graphics.Bitmap.wrapHardwareBuffer(r.hardwareBuffer, r.colorSpace)
+                        r.hardwareBuffer.close()
+                        cb(bmp)
+                    }
+                    override fun onFailure(errorCode: Int) {
+                        // 너무 자주 찍으면 실패 → 잠깐 뒤 한 번 더
+                        if (retry) mainHandler.postDelayed({ captureScreen(cb, false) }, 350) else cb(null)
+                    }
+                })
+        }.onFailure { cb(null) }
+    }
+
     /** 화면 캡처 → 원하는 영역 평균 밝기(0~1). 실패하면 null */
     fun sampleLuminance(area: android.graphics.Rect, cb: (Float?) -> Unit) {
         if (android.os.Build.VERSION.SDK_INT < 30) { cb(null); return }
