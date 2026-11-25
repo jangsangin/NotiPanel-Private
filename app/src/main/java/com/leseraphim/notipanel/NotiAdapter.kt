@@ -61,12 +61,12 @@ class NotiAdapter(
 
     private val appNames = HashMap<String, String>()
 
-    /** 화살표로 바꾼 카드별 펼침 상태 (없으면 기본: 맨 위만 펼침) */
+    /** 화살표로 바꾼 카드별 펼침 상태 (기본: 모두 접힘, 화살표로 펼침) */
     val expandOverride = HashMap<String, Boolean>()
 
     fun isExpanded(pos: Int): Boolean {
         val g = groups.getOrNull(pos) ?: return false
-        return expandOverride[g.pkg] ?: (pos == 0)
+        return expandOverride[g.pkg] ?: false
     }
     private val appIcons = HashMap<String, Drawable?>()
     private val density = ctx.resources.displayMetrics.density

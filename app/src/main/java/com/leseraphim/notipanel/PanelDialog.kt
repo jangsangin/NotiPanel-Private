@@ -302,7 +302,7 @@ class PanelDialog(
         // 뒤에 쌓이는 카드 수만큼만 여유를 둠 (X 버튼과 간격 최소화)
         val stacked = (adapter.itemCount - 2).coerceIn(0, 3)
         // 첫 알림이 답장 가능한 채팅이면: 두 번째 알림은 일부만 보이고 X가 그 30% 정도를 덮음
-        val replyMode = adapter.groups.firstOrNull()?.latest?.notification?.actions
+        val replyMode = adapter.isExpanded(0) && adapter.groups.firstOrNull()?.latest?.notification?.actions
             ?.any { !it.remoteInputs.isNullOrEmpty() } == true
         val xZone = dp(12 + 36)                    // X 버튼 + 아래 여백
         val need = if (first == null) dp(200)
