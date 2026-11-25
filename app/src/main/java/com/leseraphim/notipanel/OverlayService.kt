@@ -34,7 +34,7 @@ import android.widget.Toast
 class OverlayService : Service() {
 
     companion object {
-        private const val CHANNEL = "status"
+        private const val CHANNEL = "status_nobadge"
         private const val NOTI_ID = 1
 
         /** 설정의 '테스트로 보이기' 버튼용 */
@@ -115,8 +115,12 @@ class OverlayService : Service() {
     // ───────── 상주 알림 ─────────
     private fun startAsForeground() {
         val nm = getSystemService(NotificationManager::class.java)
+        // 예전 채널(아이콘 뱃지 뜨던 것) 정리
+        listOf("overlay", "status").forEach { runCatching { nm.deleteNotificationChannel(it) } }
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "사이드바 상태", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "사이드바 상태", NotificationManager.IMPORTANCE_LOW).apply {
+                setShowBadge(false)          // 앱 아이콘에 뱃지 안 붙게
+            }
         )
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, SettingsActivity::class.java), PendingIntent.FLAG_IMMUTABLE
