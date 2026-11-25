@@ -88,7 +88,8 @@ class PanelDialog(
         setupWindow()
     }
 
-    private fun maxHeight() = (screenH * 0.56f).toInt()
+    /** 기본(최대) 패널 높이: 화면의 61.6% (예전 56%에서 10% 키움) */
+    private fun maxHeight() = (screenH * 0.616f).toInt()
 
     private fun setupWindow() {
         val w = window ?: return
@@ -313,7 +314,8 @@ class PanelDialog(
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
                 dp(20) + list.paddingBottom
-        val h = need.coerceIn(dp(180), maxHeight())
+        // 알림이 3개 이상이면 내용과 상관없이 기본 크기로 고정
+        val h = if (adapter.itemCount >= 3) maxHeight() else need.coerceIn(dp(180), maxHeight())
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
         if (growOnly && h <= bottom - top) return
         top = bottom - h
