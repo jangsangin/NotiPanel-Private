@@ -126,7 +126,7 @@ class OverlayService : Service() {
         val method = when {
             A11yService.instance != null -> "접근성 ✓"
             rootWatcher?.rootOk == true -> "루트 ✓ (키보드 위엔 안 보임)"
-            rootWatcher?.rootOk == false -> "✗ 감지 불가 — 접근성을 켜거나 KernelSU에서 루트 허용"
+            rootWatcher?.rootOk == false -> "✗ 감지 불가(항상 표시 중) — 접근성을 켜 주세요"
             else -> "루트 확인 중…"
         }
         val where = if (A11yService.onHome) "홈" else "다른 앱"
@@ -154,7 +154,7 @@ class OverlayService : Service() {
             if (rootWatcher == null) {
                 rootWatcher = RootHomeWatcher(this) { pkg ->
                     A11yService.reportFromRoot(pkg, rootWatcher?.homePkgs ?: emptySet())
-                }.also { it.onState = { refreshStatus() }; it.start() }
+                }.also { it.onState = { refreshStatus(); updateVisibility() }; it.start() }
             }
         } else {
             rootWatcher?.stop(); rootWatcher = null
@@ -189,8 +189,8 @@ class OverlayService : Service() {
 
         val (_, h) = screenSize()
         val touchW = dp(14)                 // 실제 터치 폭 (가장자리만)
-        val barW = dp(6)                    // 보이는 바 두께
-        val barH = (h * 0.12f).toInt()      // 바 길이
+        val barW = (6 * resources.displayMetrics.density * 0.8f).toInt()   // 보이는 바 두께 (예전의 80%)
+        val barH = (h * 0.12f * 0.8f).toInt()                                // 바 길이 (예전의 80%)
         val centerY = (h * 0.73f).toInt()   // 화면 위에서 73% 지점 (키보드 모음 자리)
 
         val root = FrameLayout(ctx)
@@ -238,7 +238,8 @@ class OverlayService : Service() {
 
     /** 홈이 아니면 보이기, 홈이면 숨기기 */
     private fun updateVisibility(animate: Boolean = true) {
-        val want = forceShow || !A11yService.onHome
+        val noDetect = A11yService.instance == null && rootWatcher?.rootOk == false
+        val want = forceShow || noDetect || !A11yService.onHome
         if (!want) panel?.closeAnimated()
         setShown(want, animate)
     }

@@ -122,8 +122,44 @@ class PanelDialog(
 
     fun showAnimated() {
         show()
-        animate(0f, 1f, 380)
-        staggerIn()
+        var started = false
+        val go = {
+            if (!started) {
+                started = true
+                fitHeight()
+                animate(0f, 1f, 380)
+                staggerIn()
+            }
+        }
+        list.viewTreeObserver.addOnGlobalLayoutListener(object :
+            android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                list.post { go() }
+            }
+        })
+        list.postDelayed({ go() }, 120)   // 혹시 레이아웃 신호가 늦으면
+    }
+
+    /**
+     * 패널 높이를 내용에 맞춤:
+     * 맨 위(펼친) 알림 전체 + 두 번째 알림 + 그 아래 살짝 겹친 카드들 + X 버튼.
+     * 아래쪽 끝은 그대로 두고 윗단을 맨 위 알림 위쪽에 맞춘다.
+     */
+    private fun fitHeight() {
+        val gap = (10 * density).toInt()
+        val first = list.getChildAt(0)
+        val second = list.getChildAt(1)
+        val need = if (first == null) (220 * density).toInt() else
+            list.paddingTop + first.height + gap +
+                (second?.let { it.height + gap + (18 * density).toInt() } ?: 0) +
+                list.paddingBottom
+        val screenH = ctx.resources.displayMetrics.heightPixels
+        val minTop = (screenH * 0.06f).toInt()
+        val newH = need.coerceIn((200 * density).toInt(), to.bottom - minTop)
+        to.top = to.bottom - newH
+        content.layoutParams = (content.layoutParams as FrameLayout.LayoutParams).apply { height = newH }
+        content.requestLayout()
     }
 
     /**
@@ -246,7 +282,10 @@ class PanelDialog(
             }
         }).attachToRecyclerView(list)
 
-        content.findViewById<View>(R.id.close).setOnClickListener { closeAnimated() }
+        content.findViewById<View>(R.id.close).setOnClickListener {
+            NotificationStore.dismissAll()
+            closeAnimated()
+        }
     }
 
     /**
@@ -259,8 +298,9 @@ class PanelDialog(
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
             val h = c.height.coerceAtLeast(1).toFloat()
+            val isTop = list.getChildAdapterPosition(c) == 0
             val over = c.bottom - limit
-            if (over > 0) {
+            if (over > 0 && !isTop) {
                 val depth = over / h
                 val d = depth.coerceAtMost(3f)
                 c.pivotX = c.width / 2f
