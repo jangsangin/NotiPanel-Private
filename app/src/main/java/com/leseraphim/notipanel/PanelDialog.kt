@@ -610,7 +610,16 @@ class PanelDialog(
         // 맨 아래에 가까워질수록 쌓기 효과를 풀어서, 끝에서는 원래 간격(10dp) 그대로
         val toBottom = (list.computeVerticalScrollRange() - list.computeVerticalScrollOffset() -
             list.computeVerticalScrollExtent()).toFloat()
-        val stackW = (toBottom / (90 * density)).coerceIn(0f, 1f)
+        // 카드가 실제로 패널 아래로 넘칠 때만 쌓기 (공간이 남으면 모두 제 간격으로)
+        var overflow = false
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            if (list.getChildAdapterPosition(c) >= 2 && c.bottom > floor) { overflow = true; break }
+        }
+        if (!overflow && toBottom <= 0f) overflow = false
+        val stackW = if (!overflow && list.childCount <= adapter.itemCount &&
+            !list.canScrollVertically(1)) 0f
+            else (toBottom / (90 * density)).coerceIn(0f, 1f)
 
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
