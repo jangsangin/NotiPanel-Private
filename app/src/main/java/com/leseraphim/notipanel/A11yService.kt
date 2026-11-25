@@ -20,9 +20,24 @@ class A11yService : AccessibilityService() {
         var onHome = true
             private set
 
+        /** 루트 예비 감지 결과 반영 (접근성이 꺼져 있을 때만) */
+        var rootLastPkg = "-"
+            private set
+
+        fun reportFromRoot(pkg: String, homePkgs: Set<String>) {
+            if (instance != null) return
+            if (pkg == "com.leseraphim.notipanel" || pkg == "com.android.systemui") return
+            rootLastPkg = pkg
+            val home = pkg in homePkgs
+            if (home != onHome) {
+                onHome = home
+                listeners.toList().forEach { it(home) }
+            }
+        }
+
         /** 설정 화면 표시용 */
         fun status(): String {
-            val i = instance ?: return "접근성 꺼짐 → 항상 아이콘 표시"
+            val i = instance ?: return "접근성 꺼짐 → 루트로 감지 중\n앞 화면: $rootLastPkg  /  홈 판정: ${if (onHome) "예" else "아니오"}"
             return "앞 화면: ${i.lastPkg}  /  홈 판정: ${if (onHome) "예" else "아니오"}\n홈 앱: ${i.homePkgs.joinToString()}"
         }
 

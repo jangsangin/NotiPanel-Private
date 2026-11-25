@@ -46,6 +46,19 @@ class OverlayService : Service() {
     private var button: FrameLayout? = null
     private lateinit var buttonLp: WindowManager.LayoutParams
     private var panel: PanelDialog? = null
+    private var rootWatcher: RootHomeWatcher? = null
+
+    private fun updateWatcher() {
+        if (A11yService.instance == null) {
+            if (rootWatcher == null) {
+                rootWatcher = RootHomeWatcher(this) { pkg ->
+                    A11yService.reportFromRoot(pkg, rootWatcher?.homePkgs ?: emptySet())
+                }.also { it.start() }
+            }
+        } else {
+            rootWatcher?.stop(); rootWatcher = null
+        }
+    }
     private lateinit var bg: GradientDrawable
     private lateinit var layer: android.graphics.drawable.LayerDrawable
 
@@ -65,7 +78,8 @@ class OverlayService : Service() {
         addButton()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
         A11yService.addListener(homeListener)
-        A11yService.onConnectionChanged = { rebuildButton() }
+        A11yService.onConnectionChanged = { rebuildButton(); updateWatcher() }
+        updateWatcher()
         if (!A11yService.onHome) setHidden(true, animate = false)
     }
 
@@ -74,6 +88,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         A11yService.removeListener(homeListener)
         A11yService.onConnectionChanged = null
+        rootWatcher?.stop()
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
         panel?.dismissNow()
@@ -228,7 +243,7 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
                     if (hidden) {
-                        if (!dragging && e.actionMasked == MotionEvent.ACTION_UP) openPanel(v)
+                        // 숨김 상태에서는 탭 무시 (왼쪽으로 밀 때만 열림)
                     } else if (dragging) {
                         Prefs.get(this@OverlayService).edit()
                             .putInt(Prefs.KEY_POS_X, buttonLp.x)
