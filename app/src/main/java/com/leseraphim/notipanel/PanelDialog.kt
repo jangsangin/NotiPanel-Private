@@ -309,13 +309,13 @@ class PanelDialog(
         else if (replyMode)
             list.paddingTop + first.height + gap +
                 (second?.let { (it.height * 0.45f).toInt() + (xZone * 0.7f).toInt() } ?: xZone) +
-                list.paddingBottom
+                dp(8)
         else
             // 상태바 알림창처럼: 두 번째 카드 아래 쌓인 카드들 위로 X가 떠 있음
             list.paddingTop + first.height + gap +
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
-                dp(20) + list.paddingBottom
+                dp(20) + dp(8)
         // 알림이 3개 이상이면 내용과 상관없이 기본 크기로 고정
         val h = if (adapter.itemCount >= 3) maxHeight() else need.coerceIn(dp(180), maxHeight())
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - (bottom - top)) < onlyIfChangedBy) return
@@ -433,7 +433,10 @@ class PanelDialog(
             onReply = { a, text -> sendReply(a, text) },
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
-            onToggle = { pos -> animateChange { adapter.notifyItemChanged(pos) } }
+            onToggle = { pos ->
+                animateChange { adapter.notifyItemChanged(pos) }
+                if (adapter.isExpanded(pos)) revealCard(pos)
+            }
         )
         list.layoutManager = object : LinearLayoutManager(ctx) {
             override fun canScrollVertically() = !horizontalLock && super.canScrollVertically()
@@ -595,7 +598,7 @@ class PanelDialog(
      */
     private fun applyStack() {
         val step = STACK_STEP_DP * density
-        val floor = list.height - list.paddingBottom            // 이 아래로는 못 내려감 (X 버튼 영역)
+        val floor = list.height - dp(8)                          // 쌓인 카드는 X 밑까지
         var secondBottom = -1f
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
@@ -683,6 +686,21 @@ class PanelDialog(
             pendingOld = null
             startMove()
         }
+    }
+
+    /** 펼친 카드가 X 버튼 위로 전부 보이도록 목록을 부드럽게 스크롤 (다른 카드는 위로 밀려남) */
+    private fun revealCard(pos: Int) {
+        list.postDelayed({
+            val c = list.findViewHolderForAdapterPosition(pos)?.itemView ?: run {
+                list.smoothScrollToPosition(pos); return@postDelayed
+            }
+            val limit = list.height - dp(12 + 36 + 10)     // X 버튼 윗선
+            val over = c.bottom - limit
+            when {
+                c.top < 0 -> list.smoothScrollBy(0, c.top - dp(8))
+                over > 0 -> list.smoothScrollBy(0, minOf(over, c.top - dp(8)).coerceAtLeast(0))
+            }
+        }, 60)
     }
 
     // ───────── 목록 변경 애니메이션 ─────────
