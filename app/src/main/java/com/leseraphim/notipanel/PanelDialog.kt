@@ -186,6 +186,13 @@ class PanelDialog(
     private var replyAnchor: View? = null
     private var savedH = 0
 
+    /** 안쪽 뷰가 속한 목록 카드 */
+    private fun cardOf(v: View?): View? {
+        var cur: View? = v
+        while (cur != null && cur.parent !== list) cur = cur.parent as? View
+        return cur
+    }
+
     /** 답장 중인 카드의 아래 끝(창 안 좌표) */
     private fun anchorBottomInWindow(): Int? {
         val v = replyAnchor ?: return null
@@ -211,6 +218,8 @@ class PanelDialog(
             imeSeen = false
             lastIme = 0
             replyAnchor = anchor
+            // 답장 카드 윗부분이 잘려 있으면 먼저 그만큼 목록을 내려서 카드 전체가 보이게
+            cardOf(anchor)?.let { card -> if (card.top < 0) list.scrollBy(0, card.top) }
             // 창을 답장 카드 바로 아래까지만 남기고 자름 (그 아래 카드·X가 키보드 위를 덮지 않게)
             savedH = w.attributes.height
             val ab = anchorBottomInWindow()
@@ -776,7 +785,7 @@ class PanelDialog(
             val limit = list.height - dp(12 + 36 + 10)     // X 버튼 윗선
             val over = c.bottom - limit
             when {
-                c.top < 0 -> list.smoothScrollBy(0, c.top - dp(8))
+                c.top < 0 -> list.smoothScrollBy(0, c.top)
                 over > 0 -> list.smoothScrollBy(0, minOf(over, c.top - dp(8)).coerceAtLeast(0))
             }
         }, 380)
@@ -860,6 +869,10 @@ class PanelDialog(
                     val oldTop = top
                     fitHeight(onlyIfChangedBy = dp(6), growOnly = !allowShrink)
                     val shift = (oldTop - top).toFloat()   // 위로 커지면 +
+                    // 커졌는데 목록이 살짝 내려가 있으면(맨 위 카드 윗부분 잘림) 맨 위로 맞춤
+                    if (shift > 0f && list.computeVerticalScrollOffset() in 1..dp(60)) {
+                        list.smoothScrollBy(0, -list.computeVerticalScrollOffset())
+                    }
                     if (shift != 0f) {
                         // 창이 위로 커진 만큼 내용을 잠깐 아래로 밀어뒀다가, 카드 이동과 같은 시간·곡선으로 올림
                         // → 아래쪽 카드는 제자리, 펼친 카드와 그 위 카드들이 위로 자라나는 것처럼 보임
