@@ -80,6 +80,11 @@ class OverlayService : Service() {
         A11yService.addListener(homeListener)
         A11yService.onConnectionChanged = { rebuildButton(); updateWatcher() }
         updateWatcher()
+        if (A11yService.instance == null) {
+            android.widget.Toast.makeText(
+                this, "접근성을 켜야 사이드바가 키보드 위에 보여요", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
         if (!A11yService.onHome) setHidden(true, animate = false)
     }
 
@@ -315,7 +320,7 @@ class OverlayService : Service() {
         val size = dp(Prefs.sizeDp(this))
 
         // 바 크기·위치 (영상 속 회색 바 비율)
-        val barW = dp(5)                       // 눈에 보이는 바 두께
+        val barW = dp(6)                       // 눈에 보이는 바 두께
         val touchW = dp(26)                    // 실제로 터치되는 폭
         val edge = dp(4)                       // 화면 끝과 바 사이 간격
         val barH = (h * 0.12f).toInt()
@@ -329,7 +334,7 @@ class OverlayService : Service() {
         val t = if (hide) Rect(barX, barY, barX + touchW, barY + barH)
                 else Rect(homeX, homeY, homeX + size, homeY + size)
         val fromA = b.alpha
-        val toA = if (hide) 0.85f else Prefs.opacity(this) / 100f
+        val toA = if (hide) 1f else Prefs.opacity(this) / 100f
         val fromIcon = icon.alpha
         val toIcon = if (hide) 0f else 1f
 
@@ -347,11 +352,12 @@ class OverlayService : Service() {
             layer.setLayerInset(0, insL, 0, insR, 0)
             bg.cornerRadius = minOf(buttonLp.width - insL - insR, buttonLp.height) / 2f
             // 아이콘(흰 반투명) ↔ 바(연회색)
+            // 아이콘(흰 반투명) → 바(중간 회색, 흰 배경에서도 잘 보이게)
             bg.setColor(android.graphics.Color.argb(
-                (0x66 + (0xB0 - 0x66) * c).toInt(),
-                (255 - 35 * c).toInt(), (255 - 35 * c).toInt(), (255 - 35 * c).toInt()
+                (0x66 + (0xE6 - 0x66) * c).toInt(),
+                (255 - 125 * c).toInt(), (255 - 125 * c).toInt(), (255 - 125 * c).toInt()
             ))
-            bg.setStroke(if (c > 0.5f) 0 else dp(1), 0x88FFFFFF.toInt())
+            bg.setStroke(dp(1), if (c > 0.5f) 0x66FFFFFF else 0x88FFFFFF.toInt())
             b.alpha = fromA + (toA - fromA) * p.coerceIn(0f, 1f)
             icon.alpha = (fromIcon + (toIcon - fromIcon) * (p * 1.6f).coerceIn(0f, 1f))
             runCatching { bwm.updateViewLayout(b, buttonLp) }
@@ -392,7 +398,8 @@ class OverlayService : Service() {
         val margin = dp(14)
         val end = Rect(margin, (h * 0.31f).toInt(), w - margin, (h * 0.72f).toInt())
 
-        panel = PanelDialog(this, start, end, Prefs.blur(this)).also {
+        val host: Context = A11yService.instance ?: this
+        panel = PanelDialog(host, start, end, Prefs.blur(this)).also {
             it.setOnDismissListener { panel = null }
             it.showAnimated()
         }

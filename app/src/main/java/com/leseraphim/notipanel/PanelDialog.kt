@@ -62,7 +62,12 @@ class PanelDialog(
 
     private fun setupWindow() {
         val w = window ?: return
-        w.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        // 접근성 서비스에서 띄우면 키보드보다 위에 뜨는 창 사용
+        w.setType(
+            if (ctx is android.accessibilityservice.AccessibilityService)
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            else WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        )
         w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         w.addFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
