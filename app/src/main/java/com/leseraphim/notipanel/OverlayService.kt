@@ -48,7 +48,7 @@ class OverlayService : Service() {
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             Prefs.KEY_OPACITY, Prefs.KEY_SIZE -> applyButtonStyle()
-            Prefs.KEY_POS_X, Prefs.KEY_POS_Y -> if (Prefs.posX(this) < 0) placeDefault()
+            Prefs.KEY_POS_X, Prefs.KEY_POS_Y -> if (Prefs.posX(this) < 0 && !hidden) placeDefault()
         }
     }
 
@@ -60,11 +60,15 @@ class OverlayService : Service() {
         startAsForeground()
         addButton()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
+        A11yService.addListener(homeListener)
+        if (!A11yService.onHome) setHidden(true, animate = false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
 
     override fun onDestroy() {
+        A11yService.removeListener(homeListener)
+        handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
         panel?.dismissNow()
         button?.let { runCatching { wm.removeView(it) } }
@@ -147,7 +151,8 @@ class OverlayService : Service() {
         buttonLp.width = size
         buttonLp.height = size
         (b.getChildAt(0) as ImageView).setPadding(size / 4, size / 4, size / 4, size / 4)
-        b.alpha = Prefs.opacity(this) / 100f
+        b.alpha = Prefs.opacity(this) / 100f * (if (hidden) 0.6f else 1f)
+        if (hidden) { if (!addFirst) runCatching { wm.updateViewLayout(b, buttonLp) }; return }
         val x = Prefs.posX(this)
         val y = Prefs.posY(this)
         if (x < 0 || y < 0) placeDefault(update = false) else {
@@ -201,12 +206,95 @@ class OverlayService : Service() {
                             .putInt(Prefs.KEY_POS_Y, buttonLp.y)
                             .apply()
                     } else if (e.actionMasked == MotionEvent.ACTION_UP) {
-                        openPanel(v)
+                        onTap(v)
                     }
                 }
             }
             return true
         }
+    }
+
+    // ───────── 한 번 터치 = 패널, 두 번 터치 = 화면 끄기 ─────────
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var lastTap = 0L
+    private var pendingOpen: Runnable? = null
+    private val doubleTapMs = 260L
+
+    private fun onTap(v: android.view.View) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastTap < doubleTapMs && pendingOpen != null) {
+            // 두 번 터치 → 화면 끄기
+            handler.removeCallbacks(pendingOpen!!)
+            pendingOpen = null
+            lastTap = 0
+            if (!A11yService.lockScreen()) {
+                android.widget.Toast.makeText(
+                    this, "화면 끄기: 설정에서 접근성을 켜 주세요", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            return
+        }
+        lastTap = now
+        val r = Runnable { pendingOpen = null; openPanel(v) }
+        pendingOpen = r
+        handler.postDelayed(r, doubleTapMs)
+    }
+
+    // ───────── 다른 앱에서는 옆으로 숨기기 ─────────
+    private var hidden = false
+    private var hideAnim: android.animation.ValueAnimator? = null
+    private val homeListener: (Boolean) -> Unit = { home -> setHidden(!home) }
+
+    /**
+     * 숨길 때: 가까운 화면 옆으로 미끄러져 들어가 30%만 살짝 보이고, 터치는 통과시킴
+     * 보일 때: 원래 자리로 튕기듯 돌아옴
+     */
+    private fun setHidden(hide: Boolean, animate: Boolean = true) {
+        val b = button ?: return
+        if (hide == hidden) return
+        hidden = hide
+        if (hide) panel?.closeAnimated()
+
+        val (w, _) = screenSize()
+        val size = buttonLp.width
+        val homeX = Prefs.posX(this).takeIf { it >= 0 } ?: defaultX()
+        val toRight = homeX + size / 2 > w / 2
+        val sideX = if (toRight) w - (size * 0.3f).toInt() else -(size * 0.7f).toInt()
+        val fromX = buttonLp.x
+        val targetX = if (hide) sideX else (Prefs.posX(this).takeIf { it >= 0 } ?: defaultX())
+        val fromA = b.alpha
+        val baseA = Prefs.opacity(this) / 100f
+        val targetA = if (hide) (baseA * 0.6f) else baseA
+
+        setTouchable(!hide)
+        hideAnim?.cancel()
+        if (!animate) {
+            buttonLp.x = targetX; b.alpha = targetA
+            runCatching { wm.updateViewLayout(b, buttonLp) }
+            return
+        }
+        hideAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = if (hide) 320 else 420
+            interpolator = if (hide) android.view.animation.PathInterpolator(0.3f, 0f, 0.1f, 1f)
+                           else android.view.animation.OvershootInterpolator(1.1f)
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                buttonLp.x = (fromX + (targetX - fromX) * t).toInt()
+                b.alpha = fromA + (targetA - fromA) * t.coerceIn(0f, 1f)
+                runCatching { wm.updateViewLayout(b, buttonLp) }
+            }
+            start()
+        }
+    }
+
+    private fun setTouchable(on: Boolean) {
+        val f = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        buttonLp.flags = if (on) buttonLp.flags and f.inv() else buttonLp.flags or f
+    }
+
+    private fun defaultX(): Int {
+        val (w, _) = screenSize()
+        return (w * 0.88f).toInt() - buttonLp.width / 2
     }
 
     // ───────── 패널 ─────────

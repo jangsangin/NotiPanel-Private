@@ -27,6 +27,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnA11y"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="접근성: 다른 앱에서 아이콘 숨기기 + 두 번 터치로 화면 끄기에 필요해요"
+            android:textSize="12sp" />
+
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swEnable"
             android:layout_width="match_parent"
@@ -99,7 +110,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="아이콘은 길게 누르지 않고 끌어서 옮길 수 있어요.\n투명도 0%여도 그 자리를 누르면 패널이 열려요."
+            android:text="한 번 터치: 패널 열기 / 두 번 터치: 화면 끄기\n아이콘은 끌어서 옮길 수 있어요. 투명도 0%여도 그 자리를 누르면 동작해요.\n홈 화면이 아닐 때는 아이콘이 옆으로 숨어요."
             android:textSize="13sp" />
 
         <TextView

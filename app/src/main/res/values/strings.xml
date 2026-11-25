@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">노티패널</string>
+    <string name="a11y_desc">홈 화면인지 확인해서 다른 앱에서는 터치 아이콘을 옆으로 숨기고, 아이콘을 두 번 누르면 화면을 끕니다. 화면 내용은 읽지 않습니다.</string>
 </resources>

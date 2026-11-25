@@ -21,6 +21,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var btnOverlay: MaterialButton
     private lateinit var btnListener: MaterialButton
     private lateinit var swEnable: MaterialSwitch
+    private lateinit var btnA11y: MaterialButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,6 +35,10 @@ class SettingsActivity : AppCompatActivity() {
         btnOverlay = findViewById(R.id.btnOverlay)
         btnListener = findViewById(R.id.btnListener)
         swEnable = findViewById(R.id.swEnable)
+        btnA11y = findViewById(R.id.btnA11y)
+        btnA11y.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
 
         btnOverlay.setOnClickListener {
             startActivity(
@@ -100,6 +105,11 @@ class SettingsActivity : AppCompatActivity() {
         val listenerOk = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
             ?.contains(cn) == true
         btnListener.text = if (listenerOk) "알림 접근: 허용됨 ✓" else "알림 접근 허용하기"
+
+        val a11yCn = ComponentName(this, A11yService::class.java).flattenToString()
+        val a11yOk = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            ?.contains(a11yCn) == true
+        btnA11y.text = if (a11yOk) "접근성: 켜짐 ✓" else "접근성 켜기 (설치된 앱 → 노티패널)"
 
         swEnable.isChecked = Prefs.enabled(this) && overlayOk
         if (swEnable.isChecked) OverlayService.start(this)

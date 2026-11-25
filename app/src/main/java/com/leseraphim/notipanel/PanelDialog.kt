@@ -121,11 +121,50 @@ class PanelDialog(
         staggerIn()
     }
 
+    /**
+     * 닫기: 창을 잘라내며 줄이지 않고,
+     * 패널 전체가 아이콘 쪽(오른쪽 아래)으로 살짝 작아지면서 블러와 함께 사라진다.
+     */
     fun closeAnimated() {
         if (closing) return
         closing = true
-        val cur = (animator?.animatedValue as? Float) ?: 1f
-        animate(cur, 0f, 260) { dismissNow() }
+        animator?.cancel()
+        val w = window ?: return dismissNow()
+        val lp = w.attributes
+        val baseX = lp.x; val baseY = lp.y
+        val baseW = lp.width; val baseH = lp.height
+        val right = baseX + baseW
+        val bottom = baseY + baseH
+        val startAlpha = content.alpha
+        val blurOk = Build.VERSION.SDK_INT >= 31 && blurRadius > 0
+
+        content.pivotX = content.width.toFloat()
+        content.pivotY = content.height.toFloat()
+
+        animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 300
+            interpolator = PathInterpolator(0.4f, 0f, 0.9f, 0.6f)
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                val f = 1f - 0.14f * t                       // 14%까지 작아짐
+                val a = lp
+                a.width = maxOf(1, (baseW * f).toInt())
+                a.height = maxOf(1, (baseH * f).toInt())
+                a.x = right - a.width                          // 오른쪽 아래 고정
+                a.y = bottom - a.height
+                a.alpha = 1f - t                               // 창(블러 포함) 서서히 투명
+                w.attributes = a
+                if (blurOk) w.setBackgroundBlurRadius((blurRadius * (1f - t)).toInt())
+                content.scaleX = f
+                content.scaleY = f
+                content.alpha = (startAlpha * (1f - t * 1.5f)).coerceIn(0f, 1f)
+                content.translationY = 24 * density * t       // 살짝 아래로 가라앉음
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) = dismissNow()
+            })
+            start()
+        }
     }
 
     fun dismissNow() {
