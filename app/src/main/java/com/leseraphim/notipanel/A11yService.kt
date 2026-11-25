@@ -116,7 +116,15 @@ class A11yService : AccessibilityService() {
             listeners.toList().forEach { it(onHome) }
         }
 
-        val pkg = topAppPackage() ?: e.packageName?.toString() ?: return
+        val evPkg = e.packageName?.toString()
+        if (homePkgs.isEmpty()) homePkgs = findHomePackages()
+        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && evPkg != null && evPkg in homePkgs) {
+            lastPkg = evPkg
+            if (!onHome) { onHome = true; listeners.toList().forEach { it(true) } }
+            return
+        }
+
+        val pkg = topAppPackage() ?: evPkg ?: return
         if (pkg == packageName || pkg in ignore) return
         if (isIme(pkg)) return
         val changedPkg = pkg != lastPkg
@@ -142,6 +150,12 @@ class A11yService : AccessibilityService() {
             w.root?.packageName?.toString() == "com.android.systemui"
         }
     }.getOrDefault(false)
+
+    /** 지금 홈 화면(런처)이 보이는지 바로 확인 */
+    fun homeVisibleNow(): Boolean {
+        if (homePkgs.isEmpty()) homePkgs = findHomePackages()
+        return launcherVisible() || topAppPackage()?.let { it in homePkgs } == true
+    }
 
     /** 런처 창이 화면에 보이는지 (앱 안에 있을 땐 런처 창이 목록에 안 나옴) */
     private fun launcherVisible(): Boolean = runCatching {

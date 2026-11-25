@@ -84,6 +84,15 @@ class OverlayService : Service() {
                     locked = isKeyguardLocked()
                     updateVisibility(animate = false)
                 }
+                Intent.ACTION_CLOSE_SYSTEM_DIALOGS -> {
+                    // 홈 키·홈 제스처·최근 앱: 패널 닫고 홈 여부 다시 확인
+                    val reason = i.getStringExtra("reason")
+                    if (reason == "homekey" || reason == "recentapps" || reason == "gestureNav") {
+                        if (panel != null) { lastCloseReason = "홈/최근 앱 키" }
+                        panel?.dismissNow(); panel = null
+                        handler.postDelayed({ checkHomeNow() }, 250)
+                    }
+                }
                 Intent.ACTION_USER_PRESENT -> {
                     // 잠금 해제: 패널은 닫힌 상태 유지, 사이드바만 상황에 맞게
                     locked = false
@@ -121,7 +130,8 @@ class OverlayService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
-        })
+            @Suppress("DEPRECATION") addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+        }, if (Build.VERSION.SDK_INT >= 33) Context.RECEIVER_EXPORTED else 0)
         A11yService.addListener(homeListener)
         A11yService.onConnectionChanged = { rebuildBar(); updateWatcher() }
         A11yService.pkgListener = { refreshStatus() }
@@ -557,6 +567,22 @@ class OverlayService : Service() {
     // ───────── 패널 ─────────
     private var opening = false
 
+    private fun checkHomeNow() {
+        val a11y = A11yService.instance ?: return
+        if (a11y.homeVisibleNow()) {
+            if (panel != null) { lastCloseReason = "홈 화면 감지"; panel?.dismissNow(); panel = null }
+            setShown(false, animate = false)
+        }
+    }
+
+    private val panelHomeWatch = object : Runnable {
+        override fun run() {
+            if (panel == null) return
+            checkHomeNow()
+            if (panel != null) handler.postDelayed(this, 400)
+        }
+    }
+
     private fun openPanel(from: View) {
         if (panel?.isShowing == true || opening) return
         opening = true
@@ -576,6 +602,8 @@ class OverlayService : Service() {
                     it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
                     it.showAnimated()
                 }
+                handler.removeCallbacks(panelHomeWatch)
+                handler.postDelayed(panelHomeWatch, 600)
                 // 패널이 열린 동안 상단 배너 끄기 (새 알림은 패널에만)
                 HeadsUp.suppress(this)
             }
