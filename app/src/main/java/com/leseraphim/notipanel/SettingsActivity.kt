@@ -65,6 +65,15 @@ class SettingsActivity : AppCompatActivity() {
         bindSlider(R.id.slOpacity, R.id.lblOpacity, Prefs.KEY_OPACITY, Prefs.opacity(this)) {
             "사이드바 진하기: $it%"
         }
+        bindSlider(R.id.slPos, R.id.lblPos, Prefs.KEY_BAR_POS, Prefs.barPos(this)) {
+            "사이드바 위치: 화면 위에서 $it%"
+        }
+        bindSlider(R.id.slLen, R.id.lblLen, Prefs.KEY_BAR_LEN, Prefs.barLen(this)) {
+            "사이드바 길이: 화면 높이의 $it%"
+        }
+        bindSlider(R.id.slWidth, R.id.lblWidth, Prefs.KEY_BAR_W, Prefs.barW(this)) {
+            "사이드바 두께: ${it}dp"
+        }
         bindSlider(R.id.slBlur, R.id.lblBlur, Prefs.KEY_BLUR, Prefs.blur(this)) {
             "패널 블러 강도: $it"
         }

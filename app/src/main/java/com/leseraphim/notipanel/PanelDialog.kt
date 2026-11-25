@@ -36,7 +36,7 @@ import androidx.recyclerview.widget.RecyclerView
 class PanelDialog(
     private val ctx: Context,
     private val anchorY: Int,      // 사이드바 중앙 높이 (펼쳐지는 기준점)
-    private val barBottom: Int,    // 사이드바 아래 끝 → 패널 아래 끝을 여기에 맞춤
+    private val barBottom: Int,    // 패널 아래 끝 위치 (고정)
     private val blurRadius: Int
 ) : Dialog(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar) {
 
@@ -178,7 +178,14 @@ class PanelDialog(
         val second = list.getChildAt(1)
         // 뒤에 쌓이는 카드 수만큼만 여유를 둠 (X 버튼과 간격 최소화)
         val stacked = (adapter.itemCount - 2).coerceIn(0, 3)
-        val need = if (first == null) dp(200) else
+        // 첫 알림이 답장 가능한 채팅이면: 입력에 집중하도록 두 번째부터는 반만 보이게
+        val replyMode = adapter.groups.firstOrNull()?.latest?.notification?.actions
+            ?.any { !it.remoteInputs.isNullOrEmpty() } == true
+        list.clipToPadding = replyMode
+        val need = if (first == null) dp(200)
+        else if (replyMode)
+            list.paddingTop + first.height + gap + (second?.let { it.height / 2 } ?: 0) + list.paddingBottom
+        else
             list.paddingTop + first.height + gap +
                 (second?.let { it.height + gap } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
@@ -274,7 +281,7 @@ class PanelDialog(
         adapter = NotiAdapter(
             ctx,
             onOpen = { openNotification(it) },
-            onAction = { a -> sendPending(a.actionIntent); closeAnimated() },
+            onAction = { a -> sendPending(a.actionIntent) },   // 읽음 등: 패널 유지
             onReply = { a, text -> sendReply(a, text) }
         )
         list.layoutManager = LinearLayoutManager(ctx)

@@ -64,7 +64,14 @@ class OverlayService : Service() {
     private val homeListener: (Boolean) -> Unit = { updateVisibility() }
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Prefs.KEY_OPACITY) barView?.alpha = barAlpha()
+        when (key) {
+            Prefs.KEY_OPACITY -> barView?.alpha = barAlpha()
+            // 위치·크기 바꾸면 바로 다시 그리고, 홈 화면에서도 3초간 보여줘서 확인 가능
+            Prefs.KEY_BAR_POS, Prefs.KEY_BAR_LEN, Prefs.KEY_BAR_W -> {
+                rebuildBar()
+                previewBar()
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -189,10 +196,10 @@ class OverlayService : Service() {
         val ctx: Context = a11y ?: this
 
         val (_, h) = screenSize()
-        val touchW = dp(14)                 // 실제 터치 폭 (가장자리만)
-        val barW = (6 * resources.displayMetrics.density * 0.8f).toInt()   // 보이는 바 두께 (예전의 80%)
-        val barH = (h * 0.12f * 0.8f).toInt()                                // 바 길이 (예전의 80%)
-        val centerY = (h * 0.73f).toInt()   // 화면 위에서 73% 지점 (키보드 모음 자리)
+        val touchW = maxOf(dp(14), dp(Prefs.barW(this)) + dp(8))   // 실제 터치 폭 (가장자리만)
+        val barW = dp(Prefs.barW(this))                          // 보이는 바 두께 (설정)
+        val barH = (h * Prefs.barLen(this) / 100f).toInt()      // 바 길이 (설정)
+        val centerY = (h * Prefs.barPos(this) / 100f).toInt()   // 세로 위치 (설정)
 
         val root = FrameLayout(ctx)
         val bar = View(ctx).apply {
@@ -217,7 +224,7 @@ class OverlayService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             x = 0
-            y = centerY - barH / 2
+            y = (centerY - barH / 2).coerceIn(0, h - barH)
         }
 
         // 바 영역은 시스템 뒤로가기 제스처에서 제외
@@ -267,6 +274,15 @@ class OverlayService : Service() {
                     .withEndAction { if (!shown) root.visibility = View.GONE }.start()
             } else root.visibility = View.GONE
         }
+    }
+
+    /** 설정 바꾸는 동안 3초간 보이기 (슬라이더 움직일 때마다 연장) */
+    private val endPreview = Runnable { forceShow = false; updateVisibility() }
+    private fun previewBar() {
+        forceShow = true
+        updateVisibility(animate = false)
+        handler.removeCallbacks(endPreview)
+        handler.postDelayed(endPreview, 3000)
     }
 
     /** 설정 화면에서 홈이어도 5초간 사이드바 보이기 (보이는지 확인용) */
@@ -385,9 +401,10 @@ class OverlayService : Service() {
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
         val anchorY = loc[1] + from.height / 2
-        val barBottom = loc[1] + from.height          // 사이드바 아래 끝
+        val (_, sh) = screenSize()
+        val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
         val host: Context = A11yService.instance ?: this
-        panel = PanelDialog(host, anchorY, barBottom, Prefs.blur(this)).also {
+        panel = PanelDialog(host, anchorY, panelBottom, Prefs.blur(this)).also {
             it.setOnDismissListener { panel = null }
             it.showAnimated()
         }
