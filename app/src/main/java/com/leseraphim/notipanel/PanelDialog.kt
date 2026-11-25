@@ -489,6 +489,16 @@ class PanelDialog(
         list.layoutManager = object : LinearLayoutManager(ctx) {
             override fun canScrollVertically() = !horizontalLock && super.canScrollVertically()
 
+            // 입력칸에 커서가 들어가도 목록이 저절로 스크롤되지 않게 (카드 윗부분 잘림 방지)
+            override fun requestChildRectangleOnScreen(
+                parent: RecyclerView, child: View, rect: android.graphics.Rect,
+                immediate: Boolean, focusedChildVisible: Boolean
+            ) = false
+
+            override fun onRequestChildFocus(
+                parent: RecyclerView, state: RecyclerView.State, child: View, focused: View?
+            ) = true
+
             // 패널 아래로 넘친 카드도 미리 만들어 둠 → 처음 열 때부터 X 줄에 쌓인 모습이 보임
             override fun calculateExtraLayoutSpace(
                 state: RecyclerView.State, extraLayoutSpace: IntArray
