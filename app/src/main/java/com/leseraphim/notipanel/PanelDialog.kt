@@ -822,39 +822,37 @@ class PanelDialog(
             var stackedBehind = false
             c.pivotX = c.width / 2f
             c.pivotY = c.height.toFloat()
-            // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기 (최대 3장):
-            // 네 번째 카드가 맨 위·맨 앞(아래를 둥글게 잘라 짧게), 뒤 카드는 아래로 한 칸씩 내려가며 좁아짐
-            val peek = 7 * density
-            val gap = dp(10).toFloat()
+            // 상태바 알림창 같은 쌓기 (세 번째 카드가 맨 앞):
+            // 네 번째 카드는 세 번째 카드 뒤에 숨어서 '아랫부분 30%쯤'만 보이고(X 버튼 위),
+            // 다섯 번째는 그 밑으로 띠만, 그 뒤는 안 보임 (스크롤하면 하나씩 올라옴)
+            // 스크롤해서 올라오면: 세 번째 카드 뒤에서 윗부분이 점점 드러나며 제자리로
+            val peek = 8 * density
             val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
-            // 네 번째 카드 자리부터 쌓기: 세 번째 카드 바로 밑에 붙어서(간격 없이) X 버튼 가운데까지 1/3쯤 보이고,
-            // 그 뒤 카드들은 한 겹씩 아래로 띠만 삐져나옴
-            val sLine = (list.height - list.paddingBottom).toFloat()
-            val xMid = list.height - dp(22).toFloat()                      // 네 번째 카드가 보이는 아래 끝 (X 버튼 아래쪽)
+            val sLine = (list.height - list.paddingBottom).toFloat()        // 네 번째 카드의 원래 윗선
+            val visBottom = list.height - dp(25).toFloat()                   // 네 번째 카드 아래 끝 (X 버튼 2/3 높이)
             val d = if (stackOn) (c.top - sLine) / slot else -9f
-            val dd = d.coerceIn(0f, 2f)
-            // 다가오는 카드는 점점 위로 붙어서 간격이 사라짐 (끊김 없이)
-            // + 세 번째 카드 뒤로 살짝 파고들어 윗부분이 세 번째 카드에 가려짐
-            val tuckIn = gap + dp(16)
-            val tuck = if (stackOn && d > -1f) -tuckIn * (d + 1f).coerceAtMost(1f) else 0f
-            val hasNext = pos + 1 < adapter.itemCount
-            // 마지막 카드도 아직 다 올라오지 않았으면 같은 모양(위 1/3만 보이게 잘림)으로
+            setClipHeight(c, -1)
             if (stackOn && d > -1f) {
-                val clipBottom = xMid + dd * peek
-                val visTop = if (d > 0f) sLine - tuckIn + dd * peek else c.top + tuck
-                setClipHeight(c, (clipBottom - visTop).toInt())
-            } else setClipHeight(c, -1)
-            if (d > 0f) {
+                val stackTop = visBottom - h                                  // 네 번째 자리의 윗선
                 c.pivotX = c.width / 2f
                 c.pivotY = 0f
-                c.translationY = (sLine - tuckIn + dd * peek) - c.top
-                c.scaleX = 1f - 0.06f * (dd + 1f)     // 네 번째(0.94)부터 뒤로 갈수록 좁아짐
                 c.scaleY = 1f
-                c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
-                c.translationZ = -d
-                stackedBehind = d >= 0.5f
-                // 뒤로 들어갈수록 카드 속 글씨·아이콘을 지움 → 유리판 띠만
-                setContentAlpha(c, (1f - d).coerceIn(0f, 1f))
+                if (d <= 0f) {
+                    // 세 번째 자리 → 네 번째 자리로 (세 번째 카드 뒤로 천천히 숨음)
+                    c.translationY = (d + 1f) * (stackTop - sLine)
+                    c.scaleX = 1f - 0.06f * (d + 1f)
+                    c.alpha = 1f
+                    setContentAlpha(c, 1f)
+                } else {
+                    // 네 번째 → 다섯 번째(띠) → 안 보임
+                    val dd = d.coerceAtMost(2f)
+                    c.translationY = (stackTop + dd * peek) - c.top
+                    c.scaleX = 1f - 0.06f * (1f + dd)
+                    c.alpha = if (d <= 1f) 1f else (2f - d).coerceIn(0f, 1f)
+                    setContentAlpha(c, (1f - d).coerceIn(0f, 1f))
+                    stackedBehind = d >= 0.5f
+                }
+                c.translationZ = -(d + 1f)
             } else if (c.top < 0) {
                 setContentAlpha(c, 1f)
                 val p = (-c.top / h).coerceIn(0f, 1f)
@@ -868,12 +866,6 @@ class PanelDialog(
                 c.scaleX = 1f; c.scaleY = 1f
                 c.alpha = 1f
                 c.translationZ = 0f
-            }
-            if (stackOn && d > -1f && d <= 0f) {
-                c.translationY += tuck
-                c.pivotX = c.width / 2f
-                c.scaleX = 1f - 0.06f * (d + 1f)
-                c.translationZ = -0.5f * (d + 1f)       // 앞(세 번째) 카드 뒤로
             }
 
             // 이 카드가 보이는 모양 기록 (뒤 카드가 이 카드에 가려지는 부분을 계산할 때 씀)
@@ -933,7 +925,7 @@ class PanelDialog(
             // (첫 카드 제외, 카드의 둥근 모양 안에서만, 겹치지 않는 윗부분은 선명)
             if (stackedBehind) {
                 ProgressiveBlur.apply(c, -2f, -1f, 16 * density)     // 카드 전체 블러
-            } else if (pos >= 1) {
+            } else if (pos >= 1 && !(stackOn && d > -1f)) {
                 val s = c.scaleY.coerceAtLeast(0.5f)
                 val ty = c.translationY
                 val hh = c.height.toFloat()
