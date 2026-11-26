@@ -63,6 +63,8 @@ class PanelDialog(
     }
     private var shotView: android.widget.ImageView? = null
     /** 열 때 다른 앱의 키보드가 떠 있었으면 true → 포커스 안 뺏음 */
+    /** 실시간 블러(화면 전체, 창 뒤 블러) 사용 중 */
+    private val behindBlur = Prefs.sysBlur(ctx) && Build.VERSION.SDK_INT >= 31
     private var keepOtherIme = (A11yService.instance?.imeTop() ?: 0) > 0
 
     private var closing = false
@@ -91,13 +93,7 @@ class PanelDialog(
         blurOk = !useShot && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
         if (Prefs.sysBlur(ctx) && Build.VERSION.SDK_INT >= 31) {
             // 시험 결과를 바로 알 수 있게 안내
-            // 진단: 시스템이 알려 주는 블러 지원 여부를 그대로 보여줌
-            fun prop(k: String) = runCatching {
-                Runtime.getRuntime().exec(arrayOf("getprop", k)).inputStream.bufferedReader().readText().trim()
-            }.getOrDefault("?").ifEmpty { "-" }
-            val msg = "시스템 블러 시험\n창 블러 허용: ${wm.isCrossWindowBlurEnabled}  · 강도: $blurRadius\n" +
-                "SF 블러 지원: ${prop("ro.surface_flinger.supports_background_blur")}  · 블러 끔: ${prop("persist.sysui.disableBlur")}/${prop("ro.sf.blurs_are_expensive")}"
-            android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+            if (!wm.isCrossWindowBlurEnabled) android.widget.Toast.makeText(ctx, "실시간 블러: 지금은 기기에서 블러가 꺼져 있어요 (절전 등)", android.widget.Toast.LENGTH_SHORT).show()
         }
 
         val root = FrameLayout(ctx)
@@ -240,7 +236,7 @@ class PanelDialog(
         if (sysBlurTest) {
             w.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
             w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            w.attributes = w.attributes.apply { blurBehindRadius = blurRadius.coerceAtLeast(1) }
+            w.attributes = w.attributes.apply { blurBehindRadius = 0 }   // 열릴 때 0 → 설정값으로 점점
         }
 
         // 창 자체는 투명 (뿌연 배경·색 막·테두리는 안쪽 뷰들이 담당)
@@ -248,7 +244,7 @@ class PanelDialog(
             cornerRadius = corner
             setColor(if (sysBlurTest) Color.argb(1, 0, 0, 0) else Color.TRANSPARENT)
         })
-        if (blurOk) w.setBackgroundBlurRadius(0)
+        if (blurOk && !behindBlur) w.setBackgroundBlurRadius(0)
         w.decorView.setPadding(0, 0, 0, 0)
         w.decorView.alpha = 0f
         placeWindow(top, bottom - top)
@@ -514,7 +510,13 @@ class PanelDialog(
         val w = window ?: return
         blurAnim = ValueAnimator.ofInt(from, to).apply {
             duration = ms
-            addUpdateListener { w.setBackgroundBlurRadius(it.animatedValue as Int) }
+            addUpdateListener {
+                val r = it.animatedValue as Int
+                if (behindBlur) {
+                    val lp = w.attributes
+                    if (lp.blurBehindRadius != r) { lp.blurBehindRadius = r; w.attributes = lp }
+                } else w.setBackgroundBlurRadius(r)
+            }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: android.animation.Animator) = end()
             })

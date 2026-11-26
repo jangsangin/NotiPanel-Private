@@ -233,7 +233,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         label("블러 관련")
         card {
-            switchRow(it, "시스템 블러 시험 (실시간)", "캡처 대신 시스템 블러 사용 · 켜면 답장 때 키보드 위로 못 올라갈 수 있어요", Prefs.sysBlur(this)) { c ->
+            switchRow(it, "실시간 블러 (화면 전체)", "패널 뒤 화면 전체를 실시간으로 흐리게 (켜면 캡처 블러 대신 사용)", Prefs.sysBlur(this)) { c ->
                 Prefs.get(this).edit().putBoolean(Prefs.KEY_SYS_BLUR, c).apply()
             }
             switchRow(it, "패널 배경 블러", "뒤 화면을 찍어 뿌옇게 (끄면 반투명 배경·배터리 절약)", Prefs.panelShot(this)) { c ->
