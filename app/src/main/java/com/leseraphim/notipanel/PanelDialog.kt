@@ -91,12 +91,13 @@ class PanelDialog(
         blurOk = !useShot && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
         if (Prefs.sysBlur(ctx) && Build.VERSION.SDK_INT >= 31) {
             // 시험 결과를 바로 알 수 있게 안내
-            val msg = when {
-                !wm.isCrossWindowBlurEnabled -> "시스템 블러: 기기에서 꺼져 있다고 나와요 (절전·효과 줄이기 등)"
-                blurRadius <= 0 -> "시스템 블러: 블러(뿌옇기) 값이 0이에요"
-                else -> null
-            }
-            msg?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show() }
+            // 진단: 시스템이 알려 주는 블러 지원 여부를 그대로 보여줌
+            fun prop(k: String) = runCatching {
+                Runtime.getRuntime().exec(arrayOf("getprop", k)).inputStream.bufferedReader().readText().trim()
+            }.getOrDefault("?").ifEmpty { "-" }
+            val msg = "시스템 블러 시험\n창 블러 허용: ${wm.isCrossWindowBlurEnabled}  · 강도: $blurRadius\n" +
+                "SF 블러 지원: ${prop("ro.surface_flinger.supports_background_blur")}  · 블러 끔: ${prop("persist.sysui.disableBlur")}/${prop("ro.sf.blurs_are_expensive")}"
+            android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
         }
 
         val root = FrameLayout(ctx)
@@ -234,10 +235,18 @@ class PanelDialog(
             )
         }
 
+        // 시스템 블러 시험: 반투명 창 형식 명시 + '창 뒤 전체 블러'(BLUR_BEHIND)도 함께 시도
+        val sysBlurTest = Prefs.sysBlur(ctx) && Build.VERSION.SDK_INT >= 31
+        if (sysBlurTest) {
+            w.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+            w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            w.attributes = w.attributes.apply { blurBehindRadius = blurRadius.coerceAtLeast(1) }
+        }
+
         // 창 자체는 투명 (뿌연 배경·색 막·테두리는 안쪽 뷰들이 담당)
         w.setBackgroundDrawable(GradientDrawable().apply {
             cornerRadius = corner
-            setColor(Color.TRANSPARENT)
+            setColor(if (sysBlurTest) Color.argb(1, 0, 0, 0) else Color.TRANSPARENT)
         })
         if (blurOk) w.setBackgroundBlurRadius(0)
         w.decorView.setPadding(0, 0, 0, 0)
