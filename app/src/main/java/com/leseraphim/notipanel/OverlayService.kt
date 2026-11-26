@@ -629,7 +629,8 @@ class OverlayService : Service() {
             }
         }
         // 뒤 화면을 먼저 찍어 두고(뿌연 배경용) 패널 열기. 접근성이 없으면 바로 열기
-        val a11y = A11yService.instance
+        // 설정에서 '패널 배경 블러'를 끄면 캡처 없이 바로 열기 (배터리 절약, 반투명 배경)
+        val a11y = A11yService.instance?.takeIf { Prefs.panelShot(this) }
         if (a11y != null) {
             var done = false
             a11y.captureScreen({ bmp -> if (!done) { done = true; show(bmp) } })

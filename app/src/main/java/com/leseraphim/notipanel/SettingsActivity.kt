@@ -233,6 +233,9 @@ class SettingsActivity : AppCompatActivity() {
         }
         label("블러 관련")
         card {
+            switchRow(it, "패널 배경 블러", "뒤 화면을 찍어 뿌옇게 (끄면 반투명 배경·배터리 절약)", Prefs.panelShot(this)) { c ->
+                Prefs.get(this).edit().putBoolean(Prefs.KEY_PANEL_SHOT, c).apply()
+            }
             sliderRow(it, "노티바 진하기", "0 = 밝은 유리, 100 = 짙은 회색", 0, 100, Prefs.cardDark(this), Prefs.KEY_CARD) { "$it%" }
             sliderRow(it, "패널 블러(뿌옇기)", null, 0, 150, Prefs.blur(this), Prefs.KEY_BLUR) { "$it" }
             sliderRow(it, "패널 투명도", "높을수록 뒤 화면이 잘 비쳐요", 0, 100, Prefs.panelClear(this), Prefs.KEY_CLEAR) { "$it%" }
