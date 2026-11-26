@@ -812,17 +812,19 @@ class PanelDialog(
             val d = if (stackOn) (c.top - sLine) / slot else -9f
             val dd = d.coerceIn(0f, 2f)
             // 다가오는 카드는 점점 위로 붙어서 간격이 사라짐 (끊김 없이)
-            val tuck = if (stackOn && d > -1f) -gap * (d + 1f).coerceAtMost(1f) else 0f
+            // + 세 번째 카드 뒤로 살짝 파고들어 윗부분이 세 번째 카드에 가려짐
+            val tuckIn = gap + dp(16)
+            val tuck = if (stackOn && d > -1f) -tuckIn * (d + 1f).coerceAtMost(1f) else 0f
             val hasNext = pos + 1 < adapter.itemCount
             if (d > -1f && hasNext || d > 0f) {
                 val clipBottom = xMid + dd * peek
-                val visTop = if (d > 0f) sLine - gap + dd * peek else c.top + tuck
+                val visTop = if (d > 0f) sLine - tuckIn + dd * peek else c.top + tuck
                 setClipHeight(c, (clipBottom - visTop).toInt())
             } else setClipHeight(c, -1)
             if (d > 0f) {
                 c.pivotX = c.width / 2f
                 c.pivotY = 0f
-                c.translationY = (sLine - gap + dd * peek) - c.top
+                c.translationY = (sLine - tuckIn + dd * peek) - c.top
                 c.scaleX = 1f - 0.06f * dd
                 c.scaleY = 1f
                 c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
@@ -844,7 +846,10 @@ class PanelDialog(
                 c.alpha = 1f
                 c.translationZ = 0f
             }
-            if (d > -1f && d <= 0f) c.translationY += tuck
+            if (d > -1f && d <= 0f) {
+                c.translationY += tuck
+                c.translationZ = -0.5f * (d + 1f)       // 앞(세 번째) 카드 뒤로
+            }
 
             // 이 카드가 보이는 모양 기록 (뒤 카드가 이 카드에 가려지는 부분을 계산할 때 씀)
             run {
@@ -856,7 +861,7 @@ class PanelDialog(
             }
             // 쌓인 뒤 카드: 앞 카드에 가려지는 부분은 아예 안 그림 (반투명 유리 너머로 비치지 않게)
             val front = frontShapes[pos - 1]
-            if (d > 0f && front != null && Build.VERSION.SDK_INT >= 33) {
+            if (stackOn && d > -1f && front != null && Build.VERSION.SDK_INT >= 33) {
                 val sx = c.scaleX
                 val ox = c.left + c.width * (1f - sx) / 2f
                 val oy = c.top + c.translationY
