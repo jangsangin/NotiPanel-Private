@@ -51,6 +51,8 @@ class A11yService : AccessibilityService() {
 
         /** 앞 화면 앱이 바뀔 때 (상태 알림 갱신용) */
         var pkgListener: (() -> Unit)? = null
+        /** 화면이 스크롤될 때 */
+        var scrollListener: (() -> Unit)? = null
 
         fun currentPkg(): String = instance?.lastPkg ?: rootLastPkg
 
@@ -104,6 +106,8 @@ class A11yService : AccessibilityService() {
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         e ?: return
+        // 스크롤: 사이드바 명암 다시 재기용 신호만 보내고 끝 (가벼움)
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) { scrollListener?.invoke(); return }
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             e.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
 

@@ -212,6 +212,9 @@ class SettingsActivity : AppCompatActivity() {
         // ── 사이드바 ──
         label("사이드바")
         card {
+            switchRow(it, "명암 자동 조절", "배경이 밝으면 진하게, 어두우면 밝게 (끄면 배터리 절약)", Prefs.autoTone(this)) { c ->
+                Prefs.get(this).edit().putBoolean(Prefs.KEY_AUTO_TONE, c).apply()
+            }
             sliderRow(it, "진하기", null, 50, 100, Prefs.opacity(this), Prefs.KEY_OPACITY) { "$it%" }
             sliderRow(it, "위치", "화면 위에서부터", 5, 95, Prefs.barPos(this), Prefs.KEY_BAR_POS) { "$it%" }
             sliderRow(it, "길이", "화면 높이 기준", 3, 30, Prefs.barLen(this), Prefs.KEY_BAR_LEN) { "$it%" }

@@ -108,6 +108,7 @@ class OverlayService : Service() {
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             Prefs.KEY_OPACITY -> barView?.alpha = barAlpha()
+            Prefs.KEY_AUTO_TONE -> sampleBackground()
             // 위치·크기 바꾸면 바로 다시 그리고, 홈 화면에서도 3초간 보여줘서 확인 가능
             Prefs.KEY_BAR_POS, Prefs.KEY_BAR_LEN, Prefs.KEY_BAR_W,
             Prefs.KEY_SIDE_LEFT, Prefs.KEY_BUTTON_MODE -> {
@@ -134,7 +135,8 @@ class OverlayService : Service() {
         }, if (Build.VERSION.SDK_INT >= 33) Context.RECEIVER_EXPORTED else 0)
         A11yService.addListener(homeListener)
         A11yService.onConnectionChanged = { rebuildBar(); updateWatcher() }
-        A11yService.pkgListener = { refreshStatus() }
+        A11yService.pkgListener = { refreshStatus(); requestTone(300) }
+        A11yService.scrollListener = { requestTone(500) }
         updateWatcher()
         rebuildBar()
         handler.postDelayed(sampler, 800)
@@ -157,6 +159,7 @@ class OverlayService : Service() {
         runCatching { unregisterReceiver(screenReceiver) }
         A11yService.onConnectionChanged = null
         A11yService.pkgListener = null
+        A11yService.scrollListener = null
         rootWatcher?.stop()
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -369,7 +372,7 @@ class OverlayService : Service() {
         val off = if (isLeft) -dp(14).toFloat() else dp(14).toFloat()
         if (show) {
             root.visibility = View.VISIBLE
-            if (!isButton) handler.postDelayed({ sampleBackground() }, 350)
+            if (!isButton) requestTone(350)
             if (animate && isButton) {
                 bar.scaleX = 0.6f; bar.scaleY = 0.6f; bar.alpha = 0f
                 bar.animate().scaleX(1f).scaleY(1f).alpha(barAlpha()).setDuration(220)
@@ -533,15 +536,29 @@ class OverlayService : Service() {
 
     // ───────── 배경 밝기에 맞춰 바 명암 바꾸기 ─────────
     private var barDark: Boolean? = null
+    // 전력 절약: 계속 캡처하지 않고, 앱이 바뀌거나 스크롤이 멈췄을 때만 한 번 잼
+    // (그 사이 화면 내용이 바뀌는 경우를 위해 사이드바가 보일 때만 10초마다 한 번 확인)
+    private val toneRun = Runnable {
+        if (shown && panel == null && !opening) sampleBackground()
+    }
+
+    /** 마지막 신호 후 delay 만큼 조용하면 한 번 잼 (스크롤 중엔 계속 미룸) */
+    private fun requestTone(delay: Long) {
+        if (isButton || !shown) return
+        handler.removeCallbacks(toneRun)
+        handler.postDelayed(toneRun, delay)
+    }
+
     private val sampler = object : Runnable {
         override fun run() {
-            if (shown && panel == null && !opening) sampleBackground()   // 패널 열려 있을 땐 캡처 양보
-            handler.postDelayed(this, 1500)
+            if (shown && panel == null && !opening) sampleBackground()
+            handler.postDelayed(this, 10_000)
         }
     }
 
     private fun sampleBackground() {
         if (isButton) return
+        if (!Prefs.autoTone(this)) { applyBarTone(false); return }   // 끄면 고정 색 (밝은 바 + 테두리)
         val a11y = A11yService.instance ?: return
         val lp = barLp ?: return
         val (w, _) = screenSize()
