@@ -30,10 +30,9 @@ object NotificationStore {
         fun has(k: String) = !ex.getCharSequence(k)?.toString().isNullOrBlank()
         val lines = ex.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.any { !it.isNullOrBlank() } == true
         val msgs = (ex.getParcelableArray(Notification.EXTRA_MESSAGES)?.size ?: 0) > 0
-        val hasCustom = sbn.notification.contentView != null || sbn.notification.bigContentView != null
         return !(has(Notification.EXTRA_TITLE) || has(Notification.EXTRA_TEXT) ||
             has(Notification.EXTRA_BIG_TEXT) || has(Notification.EXTRA_SUB_TEXT) ||
-            has(Notification.EXTRA_INFO_TEXT) || has(Notification.EXTRA_TITLE_BIG) || lines || msgs) && !hasCustom
+            has(Notification.EXTRA_INFO_TEXT) || has(Notification.EXTRA_TITLE_BIG) || lines || msgs)
     }
 
     fun dismiss(sbn: StatusBarNotification) {
