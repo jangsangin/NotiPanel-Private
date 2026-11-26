@@ -420,6 +420,12 @@ class OverlayService : Service() {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY; downT = e.eventTime; fired = false
+                    // 패널이 열려 있으면 사이드바를 건드리는 순간 패널 닫기 (패널 바깥 터치와 같게)
+                    if (panel?.isShowing == true) {
+                        panel?.closeAnimated("사이드바 터치")
+                        fired = true
+                        return true
+                    }
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
@@ -604,7 +610,9 @@ class OverlayService : Service() {
     }
 
     private fun openPanel(from: View) {
-        if (panel?.isShowing == true || opening) return
+        // 이미 열려 있으면 (버튼식 등) 다시 누르면 닫기
+        if (panel?.isShowing == true) { panel?.closeAnimated("사이드바 터치"); return }
+        if (opening) return
         opening = true
         NotificationStore.resync()   // 상단 알림창과 똑같이 맞춘 뒤 열기
         val loc = IntArray(2)
