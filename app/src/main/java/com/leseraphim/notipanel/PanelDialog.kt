@@ -838,7 +838,8 @@ class PanelDialog(
             val tuckIn = gap + dp(16)
             val tuck = if (stackOn && d > -1f) -tuckIn * (d + 1f).coerceAtMost(1f) else 0f
             val hasNext = pos + 1 < adapter.itemCount
-            if (d > -1f && hasNext || d > 0f) {
+            // 마지막 카드도 아직 다 올라오지 않았으면 같은 모양(위 1/3만 보이게 잘림)으로
+            if (stackOn && d > -1f) {
                 val clipBottom = xMid + dd * peek
                 val visTop = if (d > 0f) sLine - tuckIn + dd * peek else c.top + tuck
                 setClipHeight(c, (clipBottom - visTop).toInt())
