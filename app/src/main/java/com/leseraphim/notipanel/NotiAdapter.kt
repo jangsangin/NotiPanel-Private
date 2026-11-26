@@ -263,6 +263,26 @@ class NotiAdapter(
             ?: ex.getCharSequence(Notification.EXTRA_TEXT) ?: ""
     }
 
+    /** 대화형 메시지 한 개: 보낸 사람, 내용, 프로필 사진 */
+    class Msg(val sender: CharSequence?, val text: CharSequence, val avatar: Drawable?, val key: String?)
+
+    private fun chatMessages(n: Notification): List<Msg> {
+        val arr: Array<Parcelable>? = if (Build.VERSION.SDK_INT >= 33)
+            n.extras.getParcelableArray(Notification.EXTRA_MESSAGES, Parcelable::class.java)
+        else @Suppress("DEPRECATION") n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        return arr?.mapNotNull { p ->
+            val b = p as? Bundle ?: return@mapNotNull null
+            val t = b.getCharSequence("text") ?: return@mapNotNull null
+            val person = runCatching {
+                if (Build.VERSION.SDK_INT >= 33) b.getParcelable("sender_person", android.app.Person::class.java)
+                else @Suppress("DEPRECATION") b.getParcelable("sender_person") as? android.app.Person
+            }.getOrNull()
+            val name = person?.name ?: b.getCharSequence("sender")
+            val av = runCatching { person?.icon?.loadDrawable(ctx) }.getOrNull()
+            Msg(name, t, av, person?.key ?: person?.uri ?: name?.toString())
+        } ?: emptyList()
+    }
+
     /** 대화형 알림(카톡 등)의 메시지들: (보낸 사람, 내용) */
     private fun messages(n: Notification): List<Pair<CharSequence?, CharSequence>> {
         val arr: Array<Parcelable>? = if (Build.VERSION.SDK_INT >= 33)
@@ -324,19 +344,24 @@ class NotiAdapter(
             timeV.text = time(sbn)
             titleV.text = title(n)
 
-            // 메시지 (패널이 너무 커지지 않게: 최근 3개, 각 2줄)
+            // 대화형(카톡 등): 상태바 알림창처럼 보낸 사람별로 프로필 사진 + 이름 + 말한 내용
             messagesV.removeAllViews()
-            val msgs = messages(n).takeLast(3)
-            if (msgs.isNotEmpty()) {
-                for ((sender, t) in msgs) {
-                    val sb = SpannableStringBuilder()
-                    if (sender != null && sender.toString() != title(n).toString()) {
-                        sb.append(bold(sender)).append("  ")
-                    }
-                    sb.append(t)
-                    messagesV.addView(line(sb, 14f, 0.95f, maxLines = 2, top = dp(3)))
+            val chat = chatMessages(n).takeLast(6)
+            val lpM = messagesV.layoutParams as ViewGroup.MarginLayoutParams
+            if (chat.isNotEmpty()) {
+                lpM.marginStart = 0
+                messagesV.layoutParams = lpM
+                var i = 0
+                while (i < chat.size) {
+                    val who = chat[i].key
+                    var j = i
+                    while (j + 1 < chat.size && chat[j + 1].key == who) j++
+                    messagesV.addView(senderBlock(chat.subList(i, j + 1), first = i == 0))
+                    i = j + 1
                 }
             } else {
+                lpM.marginStart = dp(52)
+                messagesV.layoutParams = lpM
                 val t = text(n)
                 if (t.isNotEmpty()) messagesV.addView(line(t, 14f, 0.95f, maxLines = 4))
             }
@@ -355,6 +380,47 @@ class NotiAdapter(
             replyBox.bind(n, maxButtons = 3)
 
             itemView.setOnClickListener { onOpen(sbn) }
+        }
+
+        /** 한 사람이 연달아 보낸 메시지 묶음: 왼쪽 프로필 사진, 오른쪽 이름 + 내용 */
+        private fun senderBlock(ms: List<Msg>, first: Boolean): View {
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = if (first) dp(4) else dp(12) }
+            }
+            val m0 = ms.first()
+            val name = m0.sender?.toString()?.takeIf { it.isNotBlank() } ?: "나"
+            val av = ImageView(ctx).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                if (m0.avatar != null) setImageDrawable(m0.avatar)
+                else setImageDrawable(letterAvatar(name))
+            }
+            round(av)
+            row.addView(av, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) })
+            val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(line(name, 15f, 0.85f, maxLines = 1, top = 0))
+            ms.forEach { col.addView(line(it.text, 15f, 1f, maxLines = 3, top = dp(2))) }
+            row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+            return row
+        }
+
+        /** 프로필 사진이 없으면 이름 첫 글자 동그라미 */
+        private fun letterAvatar(name: String): Drawable {
+            val size = dp(40)
+            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(bmp)
+            val hue = (name.hashCode() and 0xFFFF) % 360
+            val pBg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.HSVToColor(floatArrayOf(hue.toFloat(), 0.35f, 0.75f))
+            }
+            c.drawCircle(size / 2f, size / 2f, size / 2f, pBg)
+            val pT = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE; textSize = size * 0.45f; textAlign = android.graphics.Paint.Align.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+            }
+            val ch = name.trim().take(1)
+            c.drawText(ch, size / 2f, size / 2f - (pT.descent() + pT.ascent()) / 2, pT)
+            return android.graphics.drawable.BitmapDrawable(ctx.resources, bmp)
         }
 
         private fun line(t: CharSequence, size: Float, alpha: Float, maxLines: Int = 4, top: Int = dp(2)) =

@@ -424,26 +424,16 @@ class PanelDialog(
     private fun fitHeight(onlyIfChangedBy: Int = 0, growOnly: Boolean = false) {
         if (keyboardWatch) return   // 답장 중(키보드 위로 옮긴 상태)엔 크기·위치 유지
         val gap = dp(10)
-        val first = list.getChildAt(0)
-        val second = list.getChildAt(1)
-        // 뒤에 쌓이는 카드 수만큼만 여유를 둠 (X 버튼과 간격 최소화)
-        val stacked = (adapter.itemCount - 2).coerceIn(0, 3)
-        // 첫 알림이 답장 가능한 채팅이면: 두 번째 알림은 일부만 보이고 X가 그 30% 정도를 덮음
-        val replyMode = adapter.isExpanded(0) && adapter.groups.firstOrNull()?.latest?.notification?.actions
-            ?.any { !it.remoteInputs.isNullOrEmpty() } == true
-        val xZone = dp(12 + 36)                    // X 버튼 + 아래 여백
+        // 지워지는 중인 카드(위치 없음)는 빼고, 실제 0·1번 카드로 계산
+        var first: View? = null
+        var second: View? = null
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            when (list.getChildAdapterPosition(c)) { 0 -> first = c; 1 -> second = c }
+        }
+        // 알림 1~2개: 카드 아래와 X 사이 간격 = 위쪽 여백(12dp), 펼치면 그만큼 커짐
         val need = if (first == null) dp(200)
-        else if (replyMode)
-            dp(12) + first.height + gap +
-                (second?.let { (it.height * 0.45f).toInt() + (xZone * 0.7f).toInt() } ?: xZone) +
-                dp(8)
-        else
-            // 상태바 알림창처럼: 두 번째 카드 아래 쌓인 카드들 위로 X가 떠 있음
-            // 알림 1~2개: 카드 아래와 X 사이 간격 = 위쪽 여백(12dp)
-            dp(12) + first.height +
-                (second?.let { gap + it.height } ?: 0) +
-                (if (stacked > 0) dp(stacked * 9) else 0) +
-                dp(12) + dp(36 + 12)
+        else dp(12) + first.height + (second?.let { gap + it.height } ?: 0) + dp(12) + dp(36 + 12)
         // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
         // 3개 이상: 기본은 접힌 카드 3장 높이, 위 3장 중 펼친 게 있으면 그만큼 위로 커짐
         val h = if (adapter.itemCount >= 3)
@@ -865,6 +855,9 @@ class PanelDialog(
                 val k = 1f - moveInterp.getInterpolation(moveT)
                 c.translationY += dlt * k
                 if (id in newIds) c.alpha *= 1f - k
+                // 펼쳐서 커진 카드: 예전 높이에서 점점 늘어남
+                val oh = oldHeights[id]
+                if (oh != null && oh in 1 until c.height) setClipHeight(c, (oh + (c.height - oh) * (1f - k)).toInt())
             }
 
             // X 버튼과 겹치는 부분부터 아래로 점점 진해지는 블러
@@ -910,6 +903,7 @@ class PanelDialog(
     private var pendingOld: Map<Long, Float>? = null
     private val moveDelta = HashMap<Long, Float>()
     private val newIds = HashSet<Long>()
+    private val oldHeights = HashMap<Long, Int>()
     private var moveT = 1f
     private val moveInterp = PathInterpolator(0.2f, 0f, 0f, 1f)
     private var moveAnim: ValueAnimator? = null
@@ -917,9 +911,11 @@ class PanelDialog(
     /** 지금 카드 위치를 기억하고 목록을 바꾼 뒤, 다음 화면에서 예전 위치→새 위치로 미끄러지게 */
     private fun animateChange(allowShrink: Boolean = false, change: () -> Unit) {
         val old = HashMap<Long, Float>()
+        oldHeights.clear()
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
             old[list.getChildItemId(c)] = c.top + c.translationY
+            oldHeights[list.getChildItemId(c)] = c.height
         }
         moveDelta.clear(); newIds.clear()
         pendingOld = old
@@ -930,7 +926,7 @@ class PanelDialog(
     /** 목록이 바뀐 뒤 최종 배치 확정: 남아 있던 잘림·쌓임 흔적을 지우고 다시 계산 */
     private fun settle() {
         if (closing) return
-        moveDelta.clear(); newIds.clear()
+        moveDelta.clear(); newIds.clear(); oldHeights.clear()
         content.requestLayout()
         list.requestLayout()
         list.post {
@@ -966,41 +962,56 @@ class PanelDialog(
         moveT = 0f
         moveAnim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 300
-            addUpdateListener { moveT = it.animatedValue as Float; list.invalidate() }
+            addUpdateListener {
+                moveT = it.animatedValue as Float
+                if (winShift != 0f && shiftAnim == null)
+                    list.translationY = winShift * (1f - moveInterp.getInterpolation(moveT))
+                list.invalidate()
+            }
             addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) = settle()
+                override fun onAnimationEnd(a: android.animation.Animator) {
+                    if (shiftAnim == null && winShift != 0f) { list.translationY = 0f; winShift = 0f }
+                    settle()
+                }
             })
             start()
         }
     }
 
-    /** 맨 위 알림이 바뀌면 패널 높이 다시 맞추기 (창 크기는 한 번만, 내용은 스프링으로 따라감) */
+    /**
+     * 목록이 바뀐 뒤 패널 높이 맞추기
+     * - 새 배치가 그려지기 직전에 창 크기를 바꾸고, 그 화면은 건너뜀 → 창 크기와 내용 위치가 같은 화면에 함께 바뀜 (튀는 화면 없음)
+     * - 내용 보정 이동은 카드 이동과 같은 시계(moveT)로 움직여서 아래 카드가 흔들리지 않음
+     */
+    private var winShift = 0f
+    private var shiftAnim: ValueAnimator? = null
+
     private fun refitAfterLayout(allowShrink: Boolean = false) {
-        list.viewTreeObserver.addOnGlobalLayoutListener(object :
-            android.view.ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                list.post {
-                    val oldTop = top
-                    fitHeight(onlyIfChangedBy = dp(6), growOnly = !allowShrink)
-                    val shift = (oldTop - top).toFloat()   // 위로 커지면 +
-                    // 커졌는데 목록이 살짝 내려가 있으면(맨 위 카드 윗부분 잘림) 맨 위로 맞춤
-                    if (shift > 0f && list.computeVerticalScrollOffset() in 1..dp(60)) {
-                        list.smoothScrollBy(0, -list.computeVerticalScrollOffset())
-                    }
-                    if (shift != 0f) {
-                        // 창이 위로 커진 만큼 내용을 잠깐 아래로 밀어뒀다가, 카드 이동과 같은 시간·곡선으로 올림
-                        // → 아래쪽 카드는 제자리, 펼친 카드와 그 위 카드들이 위로 자라나는 것처럼 보임
-                        list.translationY += shift
-                        val from = list.translationY
-                        ValueAnimator.ofFloat(from, 0f).apply {
-                            duration = 300
-                            interpolator = moveInterp
-                            addUpdateListener { list.translationY = it.animatedValue as Float }
-                            start()
-                        }
+        val vto = list.viewTreeObserver
+        vto.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (list.viewTreeObserver.isAlive) list.viewTreeObserver.removeOnPreDrawListener(this)
+                val oldTop = top
+                fitHeight(onlyIfChangedBy = dp(6), growOnly = !allowShrink)
+                val shift = (oldTop - top).toFloat()   // 위로 커지면 +, 작아지면 -
+                if (shift == 0f) return true
+                winShift = shift
+                shiftAnim?.cancel(); shiftAnim = null
+                if (moveT < 1f) {
+                    // 카드 이동 애니메이션이 진행 중: 같은 진행도로 함께 이동
+                    list.translationY = winShift * (1f - moveInterp.getInterpolation(moveT))
+                } else {
+                    list.translationY = winShift
+                    shiftAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 300; interpolator = moveInterp
+                        addUpdateListener { list.translationY = winShift * (1f - it.animatedValue as Float) }
+                        addListener(object : android.animation.AnimatorListenerAdapter() {
+                            override fun onAnimationEnd(a: android.animation.Animator) { winShift = 0f; shiftAnim = null }
+                        })
+                        start()
                     }
                 }
+                return false   // 이번 화면은 건너뛰고, 창 크기가 바뀐 다음 화면에 그림
             }
         })
     }
