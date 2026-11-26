@@ -309,11 +309,9 @@ class OverlayService : Service() {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = barW / 2f
-                    setColor(Color.rgb(128, 128, 128))          // 중간 회색
-                    setStroke(dp(1), Color.argb(170, 255, 255, 255))
+                    setColor(Color.rgb(128, 128, 128))          // 중간 회색 (테두리·그림자 없음)
                 }
                 alpha = barAlpha()
-                elevation = dp(2).toFloat()
             }
             val side = if (left) Gravity.START else Gravity.END
             root.addView(bar, FrameLayout.LayoutParams(barW, barH, side or Gravity.CENTER_VERTICAL)
@@ -558,7 +556,11 @@ class OverlayService : Service() {
 
     private fun sampleBackground() {
         if (isButton) return
-        if (!Prefs.autoTone(this)) { applyBarTone(false); return }   // 끄면 고정 색 (밝은 바 + 테두리)
+        if (!Prefs.autoTone(this)) {   // 끄면 어느 배경에서도 보이는 중간 회색으로 고정
+            barDark = null
+            (barView?.background as? GradientDrawable)?.setColor(Color.rgb(128, 128, 128))
+            return
+        }
         val a11y = A11yService.instance ?: return
         val lp = barLp ?: return
         val (w, _) = screenSize()
@@ -575,8 +577,6 @@ class OverlayService : Service() {
         val bg = barView?.background as? GradientDrawable ?: return
         val from = if (dark) Color.rgb(225, 225, 225) else Color.rgb(60, 60, 60)
         val to = if (dark) Color.rgb(60, 60, 60) else Color.rgb(225, 225, 225)
-        val strokeTo = if (dark) Color.argb(140, 255, 255, 255) else Color.argb(120, 0, 0, 0)
-        bg.setStroke(dp(1), strokeTo)
         android.animation.ValueAnimator.ofArgb(from, to).apply {
             duration = 300
             addUpdateListener { bg.setColor(it.animatedValue as Int) }
