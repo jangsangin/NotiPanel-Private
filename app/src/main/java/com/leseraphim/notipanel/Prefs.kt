@@ -29,6 +29,8 @@ object Prefs {
     fun opacity(c: Context) = get(c).getInt(KEY_OPACITY, 100)
     fun sizeDp(c: Context) = get(c).getInt(KEY_SIZE, 64)
     fun stackOn(c: Context) = get(c).getBoolean(KEY_STACK, true)
+    const val KEY_SHOW_NOTI_ONLY = "show_noti_only"   // 사이드바: 알림이 있을 때만 보이기
+    fun showNotiOnly(c: Context) = get(c).getBoolean(KEY_SHOW_NOTI_ONLY, false)
     const val KEY_SYS_BLUR = "sys_blur"      // 시험: 캡처 대신 시스템(실시간) 블러
     fun sysBlur(c: Context) = get(c).getBoolean(KEY_SYS_BLUR, false)
     const val KEY_PANEL_SHOT = "panel_shot"  // 패널 뒤 화면 캡처해서 뿌옇게

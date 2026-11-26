@@ -209,6 +209,15 @@ class SettingsActivity : AppCompatActivity() {
         modeInfo = footer("")
         showModeInfo(Prefs.buttonMode(this))
 
+        // ── 언제 보일지 ──
+        label("표시")
+        card {
+            segmentRow(it, listOf("상시", "알림 왔을 때만"), if (Prefs.showNotiOnly(this)) 1 else 0) { i ->
+                Prefs.get(this).edit().putBoolean(Prefs.KEY_SHOW_NOTI_ONLY, i == 1).apply()
+            }
+        }
+        footer("알림 왔을 때만: 지울 수 있는 알림이 있을 때만 사이드바(버튼)가 나타나요. 모두 지우면 사라져요. (음악·충전 같은 고정 알림은 안 셈)")
+
         // ── 사이드바 ──
         label("사이드바")
         card {

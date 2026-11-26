@@ -109,6 +109,7 @@ class OverlayService : Service() {
         when (key) {
             Prefs.KEY_OPACITY -> barView?.alpha = barAlpha()
             Prefs.KEY_AUTO_TONE -> sampleBackground()
+            Prefs.KEY_SHOW_NOTI_ONLY -> updateVisibility()
             // 위치·크기 바꾸면 바로 다시 그리고, 홈 화면에서도 3초간 보여줘서 확인 가능
             Prefs.KEY_BAR_POS, Prefs.KEY_BAR_LEN, Prefs.KEY_BAR_W,
             Prefs.KEY_SIDE_LEFT, Prefs.KEY_BUTTON_MODE -> {
@@ -126,6 +127,7 @@ class OverlayService : Service() {
         wm = getSystemService(WindowManager::class.java)
         startAsForeground()
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefListener)
+        NotificationStore.addListener(storeWatch)
         locked = isKeyguardLocked()
         registerReceiver(screenReceiver, android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -160,6 +162,7 @@ class OverlayService : Service() {
         A11yService.onConnectionChanged = null
         A11yService.pkgListener = null
         A11yService.scrollListener = null
+        NotificationStore.removeListener(storeWatch)
         rootWatcher?.stop()
         handler.removeCallbacksAndMessages(null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -350,7 +353,9 @@ class OverlayService : Service() {
             setShown(false, animate = false)
             return
         }
-        val want = forceShow || noDetect || !A11yService.onHome
+        // '알림 왔을 때만' 모드: 지울 수 있는 알림이 하나도 없으면 숨김 (패널이 열려 있으면 유지)
+        val notiOk = !Prefs.showNotiOnly(this) || panel != null || hasNoti()
+        val want = forceShow || ((noDetect || !A11yService.onHome) && notiOk)
         // 홈으로 가면 패널도 바로 사라짐 (답장 중이어도 키보드와 함께 닫음)
         if (!want && panel != null) {
             lastCloseReason = "홈 화면 감지"
@@ -359,6 +364,13 @@ class OverlayService : Service() {
         // 숨길 때(홈으로 갈 때)는 애니메이션 없이 바로
         setShown(want, animate && want)
     }
+
+    /** 패널에 보여줄 '새 알림'이 있나 (고정 알림·지울 수 없는 알림은 안 셈) */
+    private fun hasNoti() = NotificationStore.items.any {
+        it.isClearable && it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0
+    }
+
+    private val storeWatch: () -> Unit = { handler.post { updateVisibility() } }
 
     private fun setShown(show: Boolean, animate: Boolean) {
         val root = barRoot ?: return
@@ -630,7 +642,7 @@ class OverlayService : Service() {
                 panel = PanelDialog(
                     host, anchorY, panelBottom, Prefs.blur(this), anchorX, shot, Prefs.panelClear(this)
                 ).also {
-                    it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this) }
+                    it.setOnDismissListener { panel = null; refreshStatus(); HeadsUp.restore(this); updateVisibility() }
                     it.showAnimated()
                 }
                 handler.removeCallbacks(panelHomeWatch)
