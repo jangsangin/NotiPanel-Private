@@ -803,24 +803,26 @@ class PanelDialog(
             // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기 (최대 3장):
             // 네 번째 카드가 맨 위·맨 앞(아래를 둥글게 잘라 짧게), 뒤 카드는 아래로 한 칸씩 내려가며 좁아짐
             val peek = 7 * density
+            val gap = dp(10).toFloat()
             val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
-            // 쌓기 시작선: 세 번째 카드 자리. 세 번째 카드가 맨 앞이고,
-            // 네 번째부터는 그 뒤에 숨어서 세 번째 카드 바로 밑으로 띠만 빈틈없이 삐져나옴
-            val sLine = (list.height - list.paddingBottom).toFloat() - slot
-            // 겹치기 꺼져 있으면 모든 카드가 제 간격 그대로
+            // 네 번째 카드 자리부터 쌓기: 세 번째 카드 바로 밑에 붙어서(간격 없이) X 버튼 가운데까지 1/3쯤 보이고,
+            // 그 뒤 카드들은 한 겹씩 아래로 띠만 삐져나옴
+            val sLine = (list.height - list.paddingBottom).toFloat()
+            val xMid = list.height - dp(12 + 18).toFloat()                 // X 버튼 가운데 높이
             val d = if (stackOn) (c.top - sLine) / slot else -9f
             val dd = d.coerceIn(0f, 2f)
-            // 이 카드가 보일 수 있는 아래 한계 (뒤 카드가 삐져나올 자리만큼 위에서 자름)
+            // 다가오는 카드는 점점 위로 붙어서 간격이 사라짐 (끊김 없이)
+            val tuck = if (stackOn && d > -1f) -gap * (d + 1f).coerceAtMost(1f) else 0f
             val hasNext = pos + 1 < adapter.itemCount
             if (d > -1f && hasNext || d > 0f) {
-                val clipBottom = list.height - (2f - dd) * peek
-                val visTop = if (d > 0f) sLine + dd * peek else c.top.toFloat()
+                val clipBottom = xMid + dd * peek
+                val visTop = if (d > 0f) sLine - gap + dd * peek else c.top + tuck
                 setClipHeight(c, (clipBottom - visTop).toInt())
             } else setClipHeight(c, -1)
             if (d > 0f) {
                 c.pivotX = c.width / 2f
                 c.pivotY = 0f
-                c.translationY = (sLine + dd * peek) - c.top
+                c.translationY = (sLine - gap + dd * peek) - c.top
                 c.scaleX = 1f - 0.06f * dd
                 c.scaleY = 1f
                 c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
@@ -842,6 +844,8 @@ class PanelDialog(
                 c.alpha = 1f
                 c.translationZ = 0f
             }
+            if (d > -1f && d <= 0f) c.translationY += tuck
+
             // 이 카드가 보이는 모양 기록 (뒤 카드가 이 카드에 가려지는 부분을 계산할 때 씀)
             run {
                 val sx = c.scaleX
