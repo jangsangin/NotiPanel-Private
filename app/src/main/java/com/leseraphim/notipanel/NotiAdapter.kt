@@ -53,7 +53,9 @@ class NotiAdapter(
     private val onReply: (Notification.Action, CharSequence) -> Unit,
     private val onReplyOpen: (Boolean, View?) -> Unit = { _, _ -> },
     private val onToggle: (List<Int>) -> Unit = {},
-    private val onStructure: (() -> Unit) -> Unit = { it() }
+    private val onStructure: (() -> Unit) -> Unit = { it() },
+    /** 답장 입력칸에 글자를 넣기 직전 (패널 창이 키보드를 받을 수 있게) */
+    private val onWantInput: () -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -579,6 +581,7 @@ class NotiAdapter(
                 .setInterpolator(interp).start()
 
             replyInput.setOnFocusChangeListener(null)
+            onWantInput()
             replyInput.requestFocus()
             imm.showSoftInput(replyInput, 0)
             replyInput.postDelayed({ if (replyOpen) imm.showSoftInput(replyInput, 0) }, 80)

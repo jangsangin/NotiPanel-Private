@@ -62,6 +62,8 @@ class PanelDialog(
         if (hideOngoing) all.filter { it.isClearable && it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0 } else all
     }
     private var shotView: android.widget.ImageView? = null
+    /** 열 때 다른 앱의 키보드가 떠 있었으면 true → 포커스 안 뺏음 */
+    private var keepOtherIme = (A11yService.instance?.imeTop() ?: 0) > 0
 
     private var closing = false
     private var blurAnim: ValueAnimator? = null
@@ -198,6 +200,14 @@ class PanelDialog(
         w.setElevation(0f)
         w.setGravity(Gravity.TOP or Gravity.START)
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        // 다른 앱에서 키보드가 떠 있을 때 열면: 패널이 입력 포커스를 뺏지 않게 해서 키보드 유지
+        // (바깥 터치는 OUTSIDE 신호로 받아서 닫음. 답장을 누르면 그때 포커스를 받음)
+        if (keepOtherIme) {
+            w.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            )
+        }
 
         // 창 자체는 투명 (뿌연 배경·색 막·테두리는 안쪽 뷰들이 담당)
         w.setBackgroundDrawable(GradientDrawable().apply {
@@ -523,8 +533,19 @@ class PanelDialog(
         super.onStop()
     }
 
+    /** 키보드 유지 모드였다면, 답장 입력을 위해 이제 포커스를 받음 */
+    private fun takeInputFocus() {
+        if (!keepOtherIme) return
+        keepOtherIme = false
+        window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+    }
+
     // 패널 바깥을 누르면 닫기
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+            closeAnimated("패널 바깥 터치")
+            return true
+        }
         if (event.actionMasked != MotionEvent.ACTION_DOWN) {
             val d = window?.decorView
             if (d != null && (event.x < 0 || event.y < 0 || event.x > d.width || event.y > d.height)) return true
@@ -565,6 +586,7 @@ class PanelDialog(
             onReplyOpen = { open, card -> watchKeyboard(open, card) },
             // 묶음을 카드별로 펼치거나 합칠 때: 카드가 미끄러지며 갈라지고 패널도 같이 커지거나 줄어듦
             onStructure = { change -> animateChange(allowShrink = true) { change() } },
+            onWantInput = { takeInputFocus() },
             // 화살표로 묶음 펼치기/접기: 나머지 카드는 부드럽게 밀려나고, 필요하면 패널이 커짐
             onToggle = { changed ->
                 val apply = {
@@ -808,7 +830,7 @@ class PanelDialog(
             // 네 번째 카드 자리부터 쌓기: 세 번째 카드 바로 밑에 붙어서(간격 없이) X 버튼 가운데까지 1/3쯤 보이고,
             // 그 뒤 카드들은 한 겹씩 아래로 띠만 삐져나옴
             val sLine = (list.height - list.paddingBottom).toFloat()
-            val xMid = list.height - dp(12 + 18).toFloat()                 // X 버튼 가운데 높이
+            val xMid = list.height - dp(22).toFloat()                      // 네 번째 카드가 보이는 아래 끝 (X 버튼 아래쪽)
             val d = if (stackOn) (c.top - sLine) / slot else -9f
             val dd = d.coerceIn(0f, 2f)
             // 다가오는 카드는 점점 위로 붙어서 간격이 사라짐 (끊김 없이)
@@ -825,7 +847,7 @@ class PanelDialog(
                 c.pivotX = c.width / 2f
                 c.pivotY = 0f
                 c.translationY = (sLine - tuckIn + dd * peek) - c.top
-                c.scaleX = 1f - 0.06f * dd
+                c.scaleX = 1f - 0.06f * (dd + 1f)     // 네 번째(0.94)부터 뒤로 갈수록 좁아짐
                 c.scaleY = 1f
                 c.alpha = if (d <= 2f) 1f else (3f - d).coerceIn(0f, 1f)
                 c.translationZ = -d
@@ -846,8 +868,10 @@ class PanelDialog(
                 c.alpha = 1f
                 c.translationZ = 0f
             }
-            if (d > -1f && d <= 0f) {
+            if (stackOn && d > -1f && d <= 0f) {
                 c.translationY += tuck
+                c.pivotX = c.width / 2f
+                c.scaleX = 1f - 0.06f * (d + 1f)
                 c.translationZ = -0.5f * (d + 1f)       // 앞(세 번째) 카드 뒤로
             }
 
