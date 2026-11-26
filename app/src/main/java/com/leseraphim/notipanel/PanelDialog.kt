@@ -802,9 +802,11 @@ class PanelDialog(
             c.pivotY = c.height.toFloat()
             // X 버튼 줄(세 번째 카드 아래 칸)에서만 쌓기 (최대 3장):
             // 네 번째 카드가 맨 위·맨 앞(아래를 둥글게 잘라 짧게), 뒤 카드는 아래로 한 칸씩 내려가며 좁아짐
-            val sLine = (list.height - list.paddingBottom).toFloat()
             val peek = 7 * density
             val slot = (c.height + dp(10)).coerceAtLeast(1).toFloat()
+            // 쌓기 시작선: 세 번째 카드 자리. 세 번째 카드가 맨 앞이고,
+            // 네 번째부터는 그 뒤에 숨어서 세 번째 카드 바로 밑으로 띠만 빈틈없이 삐져나옴
+            val sLine = (list.height - list.paddingBottom).toFloat() - slot
             // 겹치기 꺼져 있으면 모든 카드가 제 간격 그대로
             val d = if (stackOn) (c.top - sLine) / slot else -9f
             val dd = d.coerceIn(0f, 2f)
