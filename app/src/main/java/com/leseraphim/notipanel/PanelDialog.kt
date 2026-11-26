@@ -439,16 +439,17 @@ class PanelDialog(
                 dp(8)
         else
             // 상태바 알림창처럼: 두 번째 카드 아래 쌓인 카드들 위로 X가 떠 있음
-            dp(12) + first.height + gap +
-                (second?.let { it.height + gap } ?: 0) +
+            // 알림 1~2개: 카드 아래와 X 사이 간격 = 위쪽 여백(12dp)
+            dp(12) + first.height +
+                (second?.let { gap + it.height } ?: 0) +
                 (if (stacked > 0) dp(stacked * 9) else 0) +
-                dp(20) + dp(8)
+                dp(12) + dp(36 + 12)
         // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
         // 3개 이상: 기본은 접힌 카드 3장 높이, 위 3장 중 펼친 게 있으면 그만큼 위로 커짐
         val h = if (adapter.itemCount >= 3)
             maxOf(threeCardHeight(), firstThreeHeight() ?: 0,
                 if (adapter.hasSplit) allRowsHeight() else 0).coerceAtMost(maxHeight())
-        else need.coerceIn(dp(180), maxHeight())
+        else need.coerceIn(dp(100), maxHeight())
         val curH = window?.attributes?.height ?: (bottom - top)
         val curY = window?.attributes?.y ?: top
         if (onlyIfChangedBy > 0 && kotlin.math.abs(h - curH) < onlyIfChangedBy &&

@@ -139,6 +139,7 @@ class OverlayService : Service() {
         rebuildBar()
         handler.postDelayed(sampler, 800)
         RootShell.warmUp()
+        BadgeTool.disable(this)   // 런처가 채널 설정을 무시하고 붙이는 아이콘 뱃지 끄기 (루트)
         HeadsUp.restore(this)
         if (A11yService.instance == null) {
             if (!PermissionFixer.restoreNoRoot(this)) PermissionFixer.restore(this)
