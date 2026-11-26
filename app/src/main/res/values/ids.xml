@@ -1,3 +1,4 @@
 <resources>
     <item name="clip_h" type="id" />
+    <item name="clip_path" type="id" />
 </resources>

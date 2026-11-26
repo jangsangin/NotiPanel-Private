@@ -792,6 +792,7 @@ class PanelDialog(
         }
         val stackW = if (!overflow) 0f else (toBottom / (90 * density)).coerceIn(0f, 1f)
 
+        val frontShapes = HashMap<Int, android.graphics.RectF>()   // 위치별 카드가 보이는 사각형(목록 좌표)
         for (i in 0 until list.childCount) {
             val c = list.getChildAt(i)
             val pos = list.getChildAdapterPosition(c)
@@ -839,6 +840,38 @@ class PanelDialog(
                 c.alpha = 1f
                 c.translationZ = 0f
             }
+            // 이 카드가 보이는 모양 기록 (뒤 카드가 이 카드에 가려지는 부분을 계산할 때 씀)
+            run {
+                val sx = c.scaleX
+                val vl = c.left + c.width * (1f - sx) / 2f
+                val vt = c.top + c.translationY
+                val ch = (c.getTag(R.id.clip_h) as? Int)?.takeIf { it > 0 } ?: c.height
+                frontShapes[pos] = android.graphics.RectF(vl, vt, vl + c.width * sx, vt + ch)
+            }
+            // 쌓인 뒤 카드: 앞 카드에 가려지는 부분은 아예 안 그림 (반투명 유리 너머로 비치지 않게)
+            val front = frontShapes[pos - 1]
+            if (d > 0f && front != null && Build.VERSION.SDK_INT >= 33) {
+                val sx = c.scaleX
+                val ox = c.left + c.width * (1f - sx) / 2f
+                val oy = c.top + c.translationY
+                val ch = (c.getTag(R.id.clip_h) as? Int)?.takeIf { it > 0 } ?: c.height
+                val r = minOf(26 * density, ch / 2f)
+                val back = android.graphics.Path().apply {
+                    addRoundRect(0f, 0f, c.width.toFloat(), ch.toFloat(), r, r, android.graphics.Path.Direction.CW)
+                }
+                // 앞 카드 모양을 이 카드 안쪽 좌표로 (가로는 이 카드의 축소 비율 반영)
+                val fl = (front.left - ox) / sx
+                val fr = (front.right - ox) / sx
+                val fb = front.bottom - oy
+                val fr2 = minOf(26 * density, front.height() / 2f)
+                val cover = android.graphics.Path().apply {
+                    addRoundRect(fl, -10000f, fr, fb, floatArrayOf(0f, 0f, 0f, 0f, fr2 / sx, fr2, fr2 / sx, fr2),
+                        android.graphics.Path.Direction.CW)
+                }
+                back.op(cover, android.graphics.Path.Op.DIFFERENCE)
+                setClipPath(c, back)
+            } else setClipPath(c, null)
+
             val (off, a) = enterOffset(i)
             c.translationY += off
             c.alpha *= a
@@ -955,6 +988,7 @@ class PanelDialog(
         c.scaleX = 1f; c.scaleY = 1f; c.alpha = 1f
         setContentAlpha(c, 1f)
         if ((c.getTag(R.id.clip_h) as? Int ?: -1) != -1) { c.setTag(R.id.clip_h, -1); c.invalidateOutline() }
+        if (c.getTag(R.id.clip_path) != null) { c.setTag(R.id.clip_path, null); c.invalidateOutline() }
     }
 
     private fun startMove() {
@@ -1019,11 +1053,24 @@ class PanelDialog(
     /** 카드 아래를 둥글게 잘라 h 높이만 보이게 (h<0 이면 원래대로) */
     private val clipOutline = object : android.view.ViewOutlineProvider() {
         override fun getOutline(v: View, o: android.graphics.Outline) {
+            val path = v.getTag(R.id.clip_path) as? android.graphics.Path
+            if (path != null && Build.VERSION.SDK_INT >= 33) { o.setPath(path); return }
             val ch = (v.getTag(R.id.clip_h) as? Int) ?: -1
             val h = if (ch in 1 until v.height) ch else v.height
             val r = minOf(26 * density, h / 2f)
             o.setRoundRect(0, 0, v.width, h, r)
         }
+    }
+
+    /** 앞 카드에 가려지는 부분을 뺀 모양으로 자르기 (null 이면 해제) */
+    private fun setClipPath(c: View, p: android.graphics.Path?) {
+        if (p == null && c.getTag(R.id.clip_path) == null) return
+        if (c.outlineProvider !== clipOutline) {
+            c.outlineProvider = clipOutline
+            c.clipToOutline = true
+        }
+        c.setTag(R.id.clip_path, p)
+        c.invalidateOutline()
     }
 
     private fun setClipHeight(c: View, h: Int) {
