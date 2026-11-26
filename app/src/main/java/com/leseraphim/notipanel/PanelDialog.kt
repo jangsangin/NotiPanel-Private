@@ -155,6 +155,22 @@ class PanelDialog(
         return dp(12) + sum + list.paddingBottom
     }
 
+    /** 중간·아래에 있는 카드를 펼쳤을 때: 접힌 카드 3장 자리 중 하나가 펼친 카드 크기만큼 커진 높이 */
+    private fun expandedSlotHeight(): Int {
+        var cardH = 0
+        var expH = 0
+        for (i in 0 until list.childCount) {
+            val c = list.getChildAt(i)
+            val pos = list.getChildAdapterPosition(c)
+            if (pos == RecyclerView.NO_POSITION) continue
+            if (adapter.isExpanded(pos)) expH = maxOf(expH, c.height)
+            else if (cardH == 0) cardH = c.height
+        }
+        if (expH == 0) return 0
+        if (cardH <= 0) cardH = dp(80)
+        return threeCardHeight() + (expH - cardH)
+    }
+
     /** 맨 위 카드 3장(펼친 카드 포함)이 전부 들어가는 높이 */
     private fun firstThreeHeight(): Int? {
         val gap = dp(10)
@@ -447,7 +463,7 @@ class PanelDialog(
         // 알림이 3개 이상이면: 접힌 알림 3개 + X 버튼이 딱 들어가는 크기로 고정
         // 3개 이상: 기본은 접힌 카드 3장 높이, 위 3장 중 펼친 게 있으면 그만큼 위로 커짐
         val h = if (adapter.itemCount >= 3)
-            maxOf(threeCardHeight(), firstThreeHeight() ?: 0,
+            maxOf(threeCardHeight(), firstThreeHeight() ?: 0, expandedSlotHeight(),
                 if (adapter.hasSplit) allRowsHeight() else 0).coerceAtMost(maxHeight())
         else need.coerceIn(dp(100), maxHeight())
         val curH = window?.attributes?.height ?: (bottom - top)
@@ -955,7 +971,7 @@ class PanelDialog(
             val over = c.bottom - limit
             when {
                 c.top < 0 -> list.smoothScrollBy(0, c.top)
-                over > 0 -> list.smoothScrollBy(0, minOf(over, c.top - dp(8)).coerceAtLeast(0))
+                over > 0 -> list.smoothScrollBy(0, minOf(over, c.top).coerceAtLeast(0))   // 길면 윗부분(제목)부터 보이게
             }
         }, 380)
     }
