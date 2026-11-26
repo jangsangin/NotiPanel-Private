@@ -34,7 +34,7 @@ import android.widget.Toast
 class OverlayService : Service() {
 
     companion object {
-        private const val CHANNEL = "status_nobadge"
+        private const val CHANNEL = "status_nobadge2"
         private const val NOTI_ID = 1
 
         /** 패널이 마지막으로 닫힌 이유 (상태 알림에 표시) */
@@ -169,7 +169,7 @@ class OverlayService : Service() {
     private fun startAsForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         // 예전 채널(아이콘 뱃지 뜨던 것) 정리
-        listOf("overlay", "status").forEach { runCatching { nm.deleteNotificationChannel(it) } }
+        listOf("overlay", "status", "status_nobadge").forEach { runCatching { nm.deleteNotificationChannel(it) } }
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, "사이드바 상태", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)          // 앱 아이콘에 뱃지 안 붙게
@@ -209,6 +209,8 @@ class OverlayService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setBadgeIconType(Notification.BADGE_ICON_NONE)
+            .setNumber(0)
             .build()
     }
 
