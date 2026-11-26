@@ -89,6 +89,15 @@ class PanelDialog(
         if (cachedImeHeight <= 0) cachedImeHeight = (screenH * 0.42f).toInt()
         useShot = shot != null && Build.VERSION.SDK_INT >= 31
         blurOk = !useShot && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled && blurRadius > 0
+        if (Prefs.sysBlur(ctx) && Build.VERSION.SDK_INT >= 31) {
+            // 시험 결과를 바로 알 수 있게 안내
+            val msg = when {
+                !wm.isCrossWindowBlurEnabled -> "시스템 블러: 기기에서 꺼져 있다고 나와요 (절전·효과 줄이기 등)"
+                blurRadius <= 0 -> "시스템 블러: 블러(뿌옇기) 값이 0이에요"
+                else -> null
+            }
+            msg?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show() }
+        }
 
         val root = FrameLayout(ctx)
         // 둥근 패널 모양으로 안쪽 전부 자르기

@@ -613,7 +613,9 @@ class OverlayService : Service() {
         val anchorX = loc[0] + from.width / 2
         val (_, sh) = screenSize()
         val panelBottom = (sh * 0.778f).toInt()       // 패널 아래 끝 고정 위치
-        val host: Context = A11yService.instance ?: this
+        // 시스템 블러 시험 중이면 일반 오버레이 창으로 (ColorOS가 접근성 창엔 블러를 안 줄 수 있어서)
+        val sysBlur = Prefs.sysBlur(this)
+        val host: Context = if (sysBlur) this else (A11yService.instance ?: this)
         val show = { shot: android.graphics.Bitmap? ->
             opening = false
             if (panel?.isShowing != true && shown) {
@@ -631,7 +633,7 @@ class OverlayService : Service() {
         }
         // 뒤 화면을 먼저 찍어 두고(뿌연 배경용) 패널 열기. 접근성이 없으면 바로 열기
         // 설정에서 '패널 배경 블러'를 끄면 캡처 없이 바로 열기 (배터리 절약, 반투명 배경)
-        val a11y = A11yService.instance?.takeIf { Prefs.panelShot(this) }
+        val a11y = A11yService.instance?.takeIf { Prefs.panelShot(this) && !sysBlur }
         if (a11y != null) {
             var done = false
             a11y.captureScreen({ bmp -> if (!done) { done = true; show(bmp) } })
