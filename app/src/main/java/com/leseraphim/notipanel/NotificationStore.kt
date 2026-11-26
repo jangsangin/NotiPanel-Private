@@ -15,7 +15,11 @@ object NotificationStore {
     fun addListener(l: () -> Unit) { listeners += l }
     fun removeListener(l: () -> Unit) { listeners -= l }
 
+    /** 시스템에 실제로 떠 있는 알림 전부 (묶음 요약 포함) */
+    private var raw: List<StatusBarNotification> = emptyList()
+
     fun update(all: Array<StatusBarNotification>?, ownPackage: String) {
+        raw = (all ?: emptyArray()).toList()
         items = (all ?: emptyArray())
             .filter { it.packageName != ownPackage }
             .filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
@@ -35,16 +39,34 @@ object NotificationStore {
             has(Notification.EXTRA_INFO_TEXT) || has(Notification.EXTRA_TITLE_BIG) || lines || msgs)
     }
 
-    fun dismiss(sbn: StatusBarNotification) {
-        service?.cancelNotification(sbn.key)
-    }
+    fun dismiss(sbn: StatusBarNotification) = dismissMany(listOf(sbn))
 
-    /** 여러 개를 하나씩 확실하게 지우기 */
+    /**
+     * 여러 개를 하나씩 확실하게 지우기
+     * + 지운 알림이 속한 묶음의 남은 알림이 없으면, 상단 알림창에 남는 빈 묶음 머리(요약 알림)도 같이 지움
+     */
     fun dismissMany(list: List<StatusBarNotification>) {
         val svc = service ?: return
         if (list.isEmpty()) return
-        runCatching { svc.cancelNotifications(list.map { it.key }.toTypedArray()) }
-            .onFailure { list.forEach { runCatching { svc.cancelNotification(it.key) } } }
+        val gone = list.map { it.key }.toMutableSet()
+        val summaries = raw.filter { s ->
+            s.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0 && s.isClearable &&
+                list.any { it.packageName == s.packageName && it.groupKey == s.groupKey } &&
+                raw.none { c ->
+                    c.key !in gone && c.key != s.key && c.packageName == s.packageName &&
+                        c.groupKey == s.groupKey && c.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+                }
+        }
+        val keys = (list.map { it.key } + summaries.map { it.key }).distinct()
+        runCatching { svc.cancelNotifications(keys.toTypedArray()) }
+            .onFailure { keys.forEach { k -> runCatching { svc.cancelNotification(k) } } }
+    }
+
+    /** 시스템 알림 목록을 지금 다시 읽어서 맞춤 (상단 알림창에서 지운 게 패널에 남지 않게) */
+    fun resync() {
+        val svc = service ?: return
+        val all = runCatching { svc.activeNotifications }.getOrNull() ?: return
+        update(all, svc.packageName)
     }
 
     fun dismissAll() {

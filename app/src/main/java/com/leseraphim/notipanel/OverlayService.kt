@@ -606,6 +606,7 @@ class OverlayService : Service() {
     private fun openPanel(from: View) {
         if (panel?.isShowing == true || opening) return
         opening = true
+        NotificationStore.resync()   // 상단 알림창과 똑같이 맞춘 뒤 열기
         val loc = IntArray(2)
         from.getLocationOnScreen(loc)
         val anchorY = loc[1] + from.height / 2
