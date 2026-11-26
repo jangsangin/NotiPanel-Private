@@ -19,8 +19,21 @@ object NotificationStore {
         items = (all ?: emptyArray())
             .filter { it.packageName != ownPackage }
             .filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
+            .filter { !isBlank(it) }
             .sortedByDescending { it.postTime }
         listeners.toList().forEach { it() }
+    }
+
+    /** 제목·내용이 하나도 없는 알림 (앱이 고정 알림을 비워 둔 것) → 패널에 안 띄움 */
+    private fun isBlank(sbn: StatusBarNotification): Boolean {
+        val ex = sbn.notification.extras ?: return true
+        fun has(k: String) = !ex.getCharSequence(k)?.toString().isNullOrBlank()
+        val lines = ex.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.any { !it.isNullOrBlank() } == true
+        val msgs = (ex.getParcelableArray(Notification.EXTRA_MESSAGES)?.size ?: 0) > 0
+        val hasCustom = sbn.notification.contentView != null || sbn.notification.bigContentView != null
+        return !(has(Notification.EXTRA_TITLE) || has(Notification.EXTRA_TEXT) ||
+            has(Notification.EXTRA_BIG_TEXT) || has(Notification.EXTRA_SUB_TEXT) ||
+            has(Notification.EXTRA_INFO_TEXT) || has(Notification.EXTRA_TITLE_BIG) || lines || msgs) && !hasCustom
     }
 
     fun dismiss(sbn: StatusBarNotification) {
