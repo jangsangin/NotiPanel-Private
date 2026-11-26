@@ -405,7 +405,8 @@ class SettingsActivity : AppCompatActivity() {
             }
             elevation = dp(1f)
         }
-        val labels = LinearLayout(this)
+        // 흰 알약(그림자 있음)보다 글씨가 위에 그려지게
+        val labels = LinearLayout(this).apply { elevation = dp(2f); outlineProvider = null }
         var cur = selected
         val tvs = options.mapIndexed { i, s ->
             TextView(this).apply {
